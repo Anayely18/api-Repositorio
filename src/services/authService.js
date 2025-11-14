@@ -1,0 +1,70 @@
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
+import administratorRepository from '../repositories/administratorRepository.js'
+
+class AuthService {
+    async register(name, surname, dni, email, password) {
+        const emailExists = await administratorRepository.emailExists(email);
+        const dniExists = await administratorRepository.dniExists(dni)
+        if (emailExists) {
+            throw new Error('Este correo ya esta registrado.');
+        }
+        if (dniExists) {
+            throw new Error('Este dni ya esta registrado.')
+        }
+
+        const hashedPassword = await bcrypt.hash(password, 10);
+
+        const adminId = await administratorRepository.create(name, surname, dni, email, hashedPassword);
+
+        const administrator = await administratorRepository.findById(adminId);
+
+        const token = this.generateToken(administrator);
+
+        return {
+            administrator: administrator.toJSON(),
+            token
+        };
+    }
+
+    async login(email, password) {
+
+        const administrator = await administratorRepository.findByEmail(email);
+        if (!administrator) {
+            throw new Error('Credenciales no válidas');
+        }
+
+        const isValidPassword = await bcrypt.compare(password, administrator.password);
+        if (!isValidPassword) {
+            throw new Error('Credenciales no válidas');
+        }
+
+        const token = this.generateToken(administrator);
+
+        return {
+            administrator: administrator.toJSON(),
+            token
+        };
+    }
+
+    generateToken(administrator) {
+        const payload = {
+            id: administrator.id,
+            email: administrator.email
+        };
+
+        return jwt.sign(payload, process.env.JWT_SECRET || 'your-secret-key', {
+            expiresIn: process.env.JWT_EXPIRES_IN || '24h'
+        });
+    }
+
+    verifyToken(token) {
+        try {
+            return jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+        } catch (error) {
+            throw new Error('Token no válido');
+        }
+    }
+}
+
+export default new AuthService();
