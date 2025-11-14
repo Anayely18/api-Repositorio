@@ -5,14 +5,13 @@ import administratorRepository from '../repositories/administratorRepository.js'
 class AuthService {
     async register(name, surname, dni, email, password) {
         const emailExists = await administratorRepository.emailExists(email);
-        const dniExists = await administratorRepository.dniExists(dni)
-        if (emailExists) {
-            throw new Error('Este correo ya esta registrado.');
-        }
+        const dniExists = await administratorRepository.dniExists(dni);
         if (dniExists) {
             throw new Error('Este dni ya esta registrado.')
         }
-
+        if (emailExists) {
+            throw new Error('Este correo ya esta registrado.');
+        }
         const hashedPassword = await bcrypt.hash(password, 10);
 
         const adminId = await administratorRepository.create(name, surname, dni, email, hashedPassword);
