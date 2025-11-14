@@ -21,7 +21,7 @@ class AuthController {
                     message: 'El DNI debe tener 8 dígitos numéricos'
                 });
             }
-            
+
             if (!emailRegex.test(email)) {
                 return res.status(400).json({
                     success: false,
@@ -81,7 +81,7 @@ class AuthController {
 
             res.status(200).json({
                 success: true,
-                message: 'Iniciar sesión correctamente',
+                message: 'Inicio de sesión exitoso',
                 data: result
             });
         } catch (error) {
