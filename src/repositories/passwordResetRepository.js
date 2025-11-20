@@ -1,17 +1,20 @@
 import pool from '../config/database.js';
-
+import { v2 as uuidv4 } from 'uuid'
 class PasswordResetRepository {
 
     async saveVerificationCode(email, code, expiresAt) {
 
         await this.deleteByEmail(email);
+        const id = uuidv4();
+        const createdAt = Date.now();
+        const updatedAt = Date.now();
 
         const query = `
-            INSERT INTO codigo_verificacion (correo, codigo, expira_en) 
-            VALUES (?, ?, ?)
+            INSERT INTO t_codigo_verificacion (id_codigo_verificacion, email, codigo, expira_en, created_at, updated_at) 
+            VALUES (?, ?, ?, ?, ?, ?)
         `;
 
-        const [result] = await pool.execute(query, [email, code, expiresAt]);
+        const [result] = await pool.execute(query, [id, email, code, expiresAt, createdAt, updatedAt]);
         return result.insertId;
     }
 
@@ -24,8 +27,8 @@ class PasswordResetRepository {
                        WHEN expira_en > NOW() THEN 'VALIDO'
                        ELSE 'EXPIRADO'
                    END as estado
-            FROM codigo_verificacion 
-            WHERE correo = ? AND codigo = ? AND usado = FALSE
+            FROM t_codigo_verificacion
+            WHERE email = ? AND codigo = ? AND usado = FALSE
         `;
 
         const [rows] = await pool.execute(query, [email, code]);
@@ -46,23 +49,23 @@ class PasswordResetRepository {
     }
 
     async markAsUsed(id) {
-        const query = 'UPDATE codigo_verificacion SET usado = TRUE WHERE id = ?';
+        const query = 'UPDATE t_codigo_verificacion SET usado = TRUE WHERE id_codigo_verificacion = ?';
         await pool.execute(query, [id]);
     }
 
     async deleteByEmail(email) {
-        const query = 'DELETE FROM codigo_verificacion WHERE correo = ?';
+        const query = 'DELETE FROM t_codigo_verificacion WHERE email = ?';
         await pool.execute(query, [email]);
     }
 
     async cleanExpiredCodes() {
-        const query = 'DELETE FROM codigo_verificacion WHERE expira_en < NOW()';
+        const query = 'DELETE FROM t_codigo_verificacion WHERE expira_en < NOW()';
         const [result] = await pool.execute(query);
         return result.affectedRows;
     }
 
     async updatePassword(email, hashedPassword) {
-        const query = 'UPDATE Administrador SET contrasena = ? WHERE correo = ?';
+        const query = 'UPDATE t_administradores SET contrasena = ? WHERE email = ?';
         const [result] = await pool.execute(query, [hashedPassword, email]);
         return result.affectedRows > 0;
     }

@@ -1,9 +1,10 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import administratorRepository from '../repositories/administratorRepository.js'
+import { v2 as uuidv4} from 'uuid'
 
 class AuthService {
-    async register(name, surname, dni, email, password) {
+    async register(password, email, name, surname, dni) {
         const emailExists = await administratorRepository.emailExists(email);
         const dniExists = await administratorRepository.dniExists(dni);
         if (dniExists) {
@@ -12,9 +13,14 @@ class AuthService {
         if (emailExists) {
             throw new Error('Este correo ya esta registrado.');
         }
+        const id = uuidv4();
         const hashedPassword = await bcrypt.hash(password, 10);
-
-        const adminId = await administratorRepository.create(name, surname, dni, email, hashedPassword);
+        const username = name + dni;
+        const last_access = Date.now();
+        const createdAt = Date.now();
+        const updatedAt = Date.now();
+        const active = 1;
+        const adminId = await administratorRepository.create(id, username, hashedPassword, email, name, surname, dni, last_access, active, createdAt, updatedAt);
 
         const administrator = await administratorRepository.findById(adminId);
 
