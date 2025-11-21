@@ -27,6 +27,12 @@ const uploadFields = upload.fields([
     { name: 'originality', maxCount: 1 }
 ]);
 
+const uploadFieldsTeacher = upload.fields([
+    { name: 'authorization', maxCount: 1 },
+    { name: 'document', maxCount: 1 },      
+    { name: 'similarity', maxCount: 1 },
+    { name: 'report', maxCount: 1 }
+]);
 const parseFormData = (req, res, next) => {
     try {
         if (req.body.checkboxes && typeof req.body.checkboxes === 'string') {
@@ -66,5 +72,11 @@ router.post(
     parseFormData,
     applicationController.createApplication
 );
-
+router.post(
+    '/teacher',
+    uploadFieldsTeacher,
+    parseFormData,
+    applicationController.createTeacherApplication
+);
+router.get('/', applicationController.getDocumentsWithApplicationDetails);
 export default router;

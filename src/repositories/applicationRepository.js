@@ -6,6 +6,23 @@ class ApplicationRepository {
         const [result] = await pool.execute(query, [id, applicationType, name, surname, dni, contactNumber, professionalSchool, acceptTerms, ajustedFormat, errorsRead, informedProcedure, projectName, observations, linkToPublishedTesis, status, applicationDate, createdAt, updatedAt]);
         return result.insertId;
     }
+
+    async getDocumentsWithApplicationDetails() {
+        const query = `
+            SELECT 
+                CONCAT(s.nombres, ' ', s.apellidos) AS nombre_archivo,
+                d.fecha_subida,
+                s.apellidos,
+                s.dni,
+                s.escuela_profesional,
+                s.observaciones
+            FROM t_documentos d
+            INNER JOIN t_solicitudes s ON d.id_solicitud = s.id_solicitud
+            ORDER BY d.fecha_subida DESC
+        `;
+        const [rows] = await pool.execute(query);
+        return rows;
+    }
 }
 
 export default new ApplicationRepository();
