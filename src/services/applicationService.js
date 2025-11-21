@@ -14,6 +14,10 @@ class ApplicationService {
             application: {id}
         }
     }
+
+    async getDocumentsWithApplicationDetails() {
+        return await applicationRepository.getDocumentsWithApplicationDetails();
+    }
 }
 
 export default new ApplicationService();

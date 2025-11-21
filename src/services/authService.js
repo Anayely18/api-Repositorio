@@ -1,7 +1,7 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import administratorRepository from '../repositories/administratorRepository.js'
-import { v4 as uuidv4} from 'uuid'
+import { v4 as uuidv4 } from 'uuid'
 
 class AuthService {
     async register(password, email, name, surname, dni) {
