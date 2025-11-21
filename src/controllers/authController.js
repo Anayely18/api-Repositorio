@@ -36,7 +36,7 @@ class AuthController {
                 });
             }
 
-            const result = await authService.register(name, surname, dni, email, password);
+            const result = await authService.register(password, email, name, surname, dni);
 
             res.status(201).json({
                 success: true,
