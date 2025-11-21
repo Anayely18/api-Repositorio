@@ -1,13 +1,14 @@
 import pool from '../config/database.js';
-import { v2 as uuidv4 } from 'uuid'
+import { v4 as uuidv4 } from 'uuid'
 class PasswordResetRepository {
 
     async saveVerificationCode(email, code, expiresAt) {
 
         await this.deleteByEmail(email);
         const id = uuidv4();
-        const createdAt = Date.now();
-        const updatedAt = Date.now();
+        const now = new Date().toISOString().slice(0, 19).replace("T", " ");
+        const createdAt = now;
+        const updatedAt = now;
 
         const query = `
             INSERT INTO t_codigo_verificacion (id_codigo_verificacion, email, codigo, expira_en, created_at, updated_at) 
