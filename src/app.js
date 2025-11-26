@@ -3,13 +3,14 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import authRoutes from './routes/authRoutes.js';
 import applicationRoutes from './routes/applicationRoute.js';
+import applicationRoutes from './routes/applicationRoute.js';
 dotenv.config();
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use('/uploads', express.static('src/uploads'));
+app.use('/uploads/', express.static('src/uploads'));
 app.use('/api/applications', applicationRoutes);
 app.use('/api/auth', authRoutes);
 app.get('/health', (req, res) => {

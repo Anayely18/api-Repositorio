@@ -1,10 +1,14 @@
 import axios from 'axios';
 
-const API = axios.create({ baseURL: import.meta.env.VITE_API_URL || 'http://localhost:3000/api' });
+const API = axios.create({ baseURL: import.meta.env.VITE_API_URL || 'http://localhost:3000/ap/aplications' });
 
 // 1) crear trámite estudiante (SIN archivos)
 export const crearTramiteEstudiante = (payload) =>
   API.post('/tramites/estudiante', payload); // ← debe devolver { id, numero_tramite, ... }
+
+// 1) crear trámite estudiante (SIN archivos)
+export const crearTramiteDocente = (payload) =>
+  API.post('/tramites/docente', payload); // ← debe devolver { id, numero_tramite, ... }
 
 // 2) subir archivos (FormData)
 export const subirArchivosTramite = (tramiteId, formData, onUploadProgress) =>
