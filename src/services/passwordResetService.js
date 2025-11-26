@@ -62,8 +62,8 @@ class PasswordResetService {
         if (!updated) {
             throw new Error('No se pudo actualizar la contraseña');
         }
-
-        await passwordResetRepository.markAsUsed(verificationRecord.id);
+        console.log(verificationRecord)
+        await passwordResetRepository.markAsUsed(verificationRecord.id_codigo_verificacion);
 
         await emailService.sendPasswordChangeConfirmation(email, administrator.name);
 
