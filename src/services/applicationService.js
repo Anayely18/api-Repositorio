@@ -1,8 +1,12 @@
-import { v4 as uuidv4 } from "uuid";
-import applicationRepository from "../repositories/applicationRepository.js";
+import pool from "../config/database.js";
 
-class ApplicationService {
-    async createApplication({
+class ApplicationRepository {
+
+    /* ============================================================
+       INSERTAR SOLICITUD
+    ============================================================ */
+    async create(
+        id,
         applicationType,
         name,
         surname,
@@ -20,36 +24,51 @@ class ApplicationService {
         observations,
         linkToPublishedTesis,
         status,
-        applicationDate
-    }) {
-        const id = uuidv4();
-        const now = new Date().toISOString().slice(0, 19).replace("T", " ");
+        applicationDate,
+        createdAt,
+        updatedAt
+    ) {
+        const query = `
+            INSERT INTO t_solicitudes (
+                id_solicitud,
+                tipo_solicitud,
+                nombres,
+                apellidos,
+                email,
+                dni,
+                numero_contacto,
+                escuela_profesional,
+                acepta_terminos,
+                formato_ajustado,
+                errores_leidos,
+                tramite_informado,
+                declara_verdad,
+                tipo_financiamiento,
+                nombre_proyecto,
+                observaciones,
+                link_tesis_publicada,
+                estado,
+                fecha_solicitud,
+                created_at,
+                updated_at
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        `;
 
-        // Asegurar que email no sea nulo, y sea único aunque sea “falso”
-        let finalEmail = email;
-        if (!finalEmail || finalEmail.trim() === "") {
-            // Genera uno sintético basado en el DNI para evitar violar UNIQUE
-            finalEmail = `no-email-${dni || id}@noemail.local`;
-        }
-
-        const createdAt = now;
-        const updatedAt = now;
-
-        const insertId = await applicationRepository.create(
+        await pool.execute(query, [
             id,
             applicationType,
             name,
             surname,
-            finalEmail,
+            email,
             dni,
             contactNumber,
             professionalSchool,
-            !!acceptTerms,
-            !!ajustedFormat,
-            !!errorsRead,
-            !!informedProcedure,
-            !!declaresTruth,
-            financingType || null,
+            acceptTerms,
+            ajustedFormat,
+            errorsRead,
+            informedProcedure,
+            declaresTruth,
+            financingType,
             projectName,
             observations,
             linkToPublishedTesis,
@@ -57,19 +76,54 @@ class ApplicationService {
             applicationDate,
             createdAt,
             updatedAt
-        );
+        ]);
 
-        return {
-            application: {
-                id,
-                insertId
-            }
-        };
+        return id;
     }
 
-    async getDocumentsWithApplicationDetails() {
-        return await applicationRepository.getDocumentsWithApplicationDetails();
+    /* ============================================================
+       OBTENER LISTA DE ESTUDIANTES (CRUD)
+    ============================================================ */
+    async getStudents() {
+        const query = `
+            SELECT
+                s.id_solicitud,
+                s.nombre_proyecto AS nombre_archivo,
+                s.apellidos,
+                s.dni,
+                s.escuela_profesional,
+                s.observaciones,
+                s.fecha_solicitud AS fecha_subida
+            FROM t_solicitudes s
+            WHERE s.tipo_solicitud = 'estudiante'
+            ORDER BY s.fecha_solicitud DESC
+        `;
+        const [rows] = await pool.execute(query);
+        return rows;
     }
+
+    /* ============================================================
+       OBTENER LISTA DE DOCENTES (CRUD)
+    ============================================================ */
+    async getTeachers() {
+        const query = `
+            SELECT
+                s.id_solicitud,
+                s.nombre_proyecto,
+                s.nombres,
+                s.apellidos,
+                s.dni,
+                s.escuela_profesional AS escuela,
+                s.fecha_solicitud AS fecha_subida,
+                s.observaciones
+            FROM t_solicitudes s
+            WHERE s.tipo_solicitud = 'docente'
+            ORDER BY s.fecha_solicitud DESC
+        `;
+        const [rows] = await pool.execute(query);
+        return rows;
+    }
+
 }
 
-export default new ApplicationService();
+export default new ApplicationRepository();

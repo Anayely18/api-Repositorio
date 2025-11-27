@@ -6,14 +6,20 @@ import documentService from '../services/documentService.js';
 
 class ApplicationController {
 
+    /* ==============================================================
+       ===============   CREATE APPLICATION STUDENT   ===============
+       ============================================================== */
     async createApplication(req, res) {
+
         console.log("⚠️ ENTRÓ A createApplication (ESTUDIANTE), BODY:", req.body);
+
         try {
             const { checkboxes, students, advisors, jury, projectTitle } = req.body;
             const files = req.files;
 
             const firstStudent = students?.[0] || {};
 
+            // Crear la solicitud base
             const application = await applicationService.createApplication({
                 applicationType: 'estudiante',
                 name: firstStudent.nombres ?? null,
@@ -26,8 +32,8 @@ class ApplicationController {
                 ajustedFormat: checkboxes?.format ?? false,
                 errorsRead: checkboxes?.errors ?? false,
                 informedProcedure: checkboxes?.informed ?? false,
-                declaresTruth: false,              // el form estudiante no tiene “declaro verdad”
-                financingType: null,               // tampoco maneja financiamiento
+                declaresTruth: false,
+                financingType: null,
                 projectName: projectTitle ?? null,
                 observations: null,
                 linkToPublishedTesis: null,
@@ -35,12 +41,18 @@ class ApplicationController {
                 applicationDate: new Date()
             });
 
-
             const idApplication = application.application.id;
-            const authorOrders = ['principal', 'coautor'];
+
+
+            /* ========================
+               REGISTRO DE AUTORES
+               ======================== */
+            const authorOrders = ['autor', 'coautor'];
+
             if (students?.length > 0) {
                 for (let i = 0; i < students.length; i++) {
                     const s = students[i];
+
                     if (s && s.dni) {
                         await authorService.createAuthor(
                             idApplication,
@@ -48,17 +60,23 @@ class ApplicationController {
                             s.nombres ?? null,
                             s.apellidos ?? null,
                             s.dni ?? null,
-                            s.url_orcid ?? s.orcid ?? null,
+                            s.orcid ?? null,
                             s.escuela ?? null
                         );
                     }
                 }
             }
 
+
+            /* ===========================
+               REGISTRO DE ASESORES
+               =========================== */
             const advisorOrders = ['primero', 'segundo'];
+
             if (advisors?.length > 0) {
                 for (let i = 0; i < advisors.length; i++) {
                     const a = advisors[i];
+
                     if (a && a.dni) {
                         await advisorService.createAdvisor(
                             idApplication,
@@ -71,28 +89,32 @@ class ApplicationController {
                 }
             }
 
+
+            /* ===========================
+               REGISTRO DE JURADO
+               =========================== */
             const juryRoles = ['presidente', 'primer_miembro', 'segundo_miembro'];
 
             if (jury?.length > 0) {
+
                 for (let i = 0; i < jury.length; i++) {
 
                     const member = jury[i];
 
-                    // Si llega en formato {firstName, lastName}
                     if (typeof member === 'object') {
-                        const fullName = `${member.firstName ?? ''} ${member.lastName ?? ''}`.trim();
 
+                        const fullName = `${member.firstName ?? ''} ${member.lastName ?? ''}`.trim();
                         if (fullName.length > 0) {
+
                             await juryService.createJury(
                                 idApplication,
                                 juryRoles[i] ?? 'primer_miembro',
                                 fullName
                             );
                         }
-                        continue; // saltar al siguiente
+                        continue;
                     }
 
-                    // Si llega como simple string
                     if (typeof member === 'string' && member.trim().length > 0) {
                         await juryService.createJury(
                             idApplication,
@@ -104,6 +126,9 @@ class ApplicationController {
             }
 
 
+            /* ==============================
+               DOCUMENTOS DEL ESTUDIANTE
+               ============================== */
             const documentTypes = {
                 authorization: 'hoja_autorizacion',
                 certificate: 'constancia_empastado',
@@ -124,6 +149,7 @@ class ApplicationController {
                 }
             }
 
+
             return res.status(201).json({
                 success: true,
                 message: 'Solicitud creada exitosamente',
@@ -140,14 +166,21 @@ class ApplicationController {
         }
     }
 
+
+
+
+
+    /* ==============================================================
+       ===============   CREATE APPLICATION TEACHER   ===============
+       ============================================================== */
     async createTeacherApplication(req, res) {
+
         console.log("📌 ENTRÓ A createTeacherApplication (DOCENTE)");
 
         try {
             const { checkboxes, teachers, coauthors, projectTitle } = req.body;
             const files = req.files;
 
-            // Validar datos requeridos
             if (!projectTitle || projectTitle.trim().length < 5) {
                 return res.status(400).json({
                     success: false,
@@ -162,7 +195,6 @@ class ApplicationController {
                 });
             }
 
-            // Validar checkboxes
             if (!checkboxes.agreement || !checkboxes.format || !checkboxes.errors || !checkboxes.informed) {
                 return res.status(400).json({
                     success: false,
@@ -184,7 +216,7 @@ class ApplicationController {
                 });
             }
 
-            // Obtener datos del primer maestro (autor principal)
+
             const firstTeacher = teachers[0];
 
             if (!firstTeacher.nombres || !firstTeacher.apellidos || !firstTeacher.dni) {
@@ -194,7 +226,10 @@ class ApplicationController {
                 });
             }
 
-            // Crear solicitud principal
+
+            /* =============================
+               CREAR LA SOLICITUD DOCENTE
+               ============================= */
             const application = await applicationService.createApplication({
                 applicationType: 'docente',
                 name: firstTeacher.nombres,
@@ -208,9 +243,12 @@ class ApplicationController {
                 errorsRead: checkboxes.errors,
                 informedProcedure: checkboxes.informed,
                 declaresTruth: checkboxes.truthful,
-                financingType: checkboxes.funding === 'public'
-                    ? 'publico'
-                    : (checkboxes.funding === 'self' ? 'autofinanciado' : null),
+                financingType:
+                    checkboxes.funding === 'public'
+                        ? 'publico'
+                        : checkboxes.funding === 'self'
+                            ? 'autofinanciado'
+                            : null,
                 projectName: projectTitle,
                 observations: null,
                 linkToPublishedTesis: null,
@@ -218,72 +256,68 @@ class ApplicationController {
                 applicationDate: new Date()
             });
 
-
             const idApplication = application.application.id;
 
-            /* =============================
-                REGISTRO DE AUTORES DOCENTES
-                ============================= */
 
+            /* =============================================
+               REGISTRO DE AUTORES DOCENTES
+               ============================================= */
             const authorOrders = ['principal', 'segundo', 'tercero'];
 
-            if (teachers && teachers.length > 0) {
-                for (let i = 0; i < teachers.length; i++) {
-                    const t = teachers[i];
+            for (let i = 0; i < teachers.length; i++) {
+                const t = teachers[i];
 
-                    if (t && t.dni && t.nombres && t.apellidos) {
-                        await authorService.createAuthor(
-                            idApplication,
-                            authorOrders[i] ?? 'coautor',     // orden_autor
-                            t.nombres,
-                            t.apellidos,
-                            t.dni,
-                            t.orcid || null,
-                            t.escuela || null,
-                            'autor',                           // tipo_colaborador
-                            null,                              // tipo_ubicacion (los autores no usan)
-                            'docente'                          // tipo_rol
-                        );
-                    }
-                }
+                if (!t || !t.dni) continue;
+
+                await authorService.createAuthor(
+                    idApplication,
+                    authorOrders[i] ?? 'coautor',
+                    t.nombres,
+                    t.apellidos,
+                    t.dni,
+                    t.orcid || null,
+                    t.escuela || null,
+                    'autor',             // tipo_colaborador
+                    'interno',           // tipo_ubicacion
+                    'docente'            // tipo_rol
+                );
             }
 
-            /* =============================
-               REGISTRO DE COAUTORES
-               ============================= */
 
-            if (coauthors && coauthors.length > 0) {
-                for (let i = 0; i < coauthors.length; i++) {
-                    const c = coauthors[i];
+            /* =============================================
+               REGISTRO DE COAUTORES (DOCENTE)
+               ============================================= */
+            if (coauthors?.length > 0) {
+                for (const c of coauthors) {
 
                     if (!c || !c.dni || !c.nombre) continue;
 
-                    // Mapeos según tu formulario
                     let tipoColaborador = 'coautor';
 
-                    if (c.tipoUbicacion === 'interno') {
+                    if (c.tipoUbicacion === 'interno')
                         tipoColaborador = 'colaborador_interno';
-                    } else if (c.tipoUbicacion === 'externo') {
+                    else if (c.tipoUbicacion === 'externo')
                         tipoColaborador = 'colaborador_externo';
-                    }
 
                     await authorService.createAuthor(
                         idApplication,
-                        'coautor',                       // orden_autor
+                        'coautor',
                         c.nombre,
                         c.apellido || null,
                         c.dni,
                         c.orcid || null,
-                        c.tipoUbicacion === 'interno' ? (c.escuela || null) : null,
-                        tipoColaborador,                // tipo_colaborador
-                        c.tipoUbicacion || null,        // tipo_ubicacion
-                        c.tipoRol || null               // tipo_rol (estudiante/docente)
+                        c.tipoUbicacion === 'interno' ? c.escuela || null : null,
+                        tipoColaborador,          // tipo_colaborador
+                        c.tipoUbicacion || null,  // tipo_ubicacion
+                        c.tipoRol || null         // tipo_rol
                     );
                 }
             }
 
 
-            // Mapeo de tipos de documentos
+            /* =============================================
+               REGISTRO DE DOCUMENTOS DOCENTES
+               ============================================= */
             const documentTypes = {
                 authorization: 'hoja_autorizacion',
                 document: 'constancia_empastado',
@@ -291,10 +325,8 @@ class ApplicationController {
                 report: 'tesis_pdf'
             };
 
-            // Registrar documentos
             if (files) {
                 for (const [key, file] of Object.entries(files)) {
-
                     console.log("DOCUMENT DEBUG:", {
                         fieldname: key,
                         originalName: file.originalname,
@@ -314,7 +346,6 @@ class ApplicationController {
             }
 
 
-            // Retornar respuesta exitosa
             return res.status(201).json({
                 success: true,
                 message: 'Solicitud de docente creada exitosamente',
@@ -326,7 +357,9 @@ class ApplicationController {
             });
 
         } catch (error) {
+
             console.error('Error al crear solicitud de docente:', error);
+
             return res.status(500).json({
                 success: false,
                 message: 'Error al procesar la solicitud',
@@ -335,7 +368,12 @@ class ApplicationController {
         }
     }
 
-    // Obtener solicitud docente completa con todos sus datos
+
+
+
+    /* ==============================================================
+       ===============   GET TEACHER APPLICATION DETAILS   ===========
+       ============================================================== */
     async getTeacherApplicationDetails(req, res) {
         try {
             const { applicationId } = req.params;
@@ -347,7 +385,8 @@ class ApplicationController {
                 });
             }
 
-            const applicationData = await applicationService.getApplicationWithRelatedData(applicationId);
+            const applicationData =
+                await applicationService.getApplicationWithRelatedData(applicationId);
 
             if (!applicationData) {
                 return res.status(404).json({
@@ -356,7 +395,6 @@ class ApplicationController {
                 });
             }
 
-            // Procesar datos para retornar formato limpio
             const cleanData = {
                 solicitud: {
                     id: applicationData.id_solicitud,
@@ -371,9 +409,17 @@ class ApplicationController {
                     dni: applicationData.dni,
                     escuela: applicationData.escuela_profesional
                 },
-                autores: applicationData.autores?.filter(a => a !== null) || [],
-                coautores: applicationData.autores?.filter(a => a !== null && a.orden_autor !== 'principal') || [],
-                documentos: applicationData.documentos?.filter(d => d !== null) || [],
+                autores:
+                    applicationData.autores?.filter(a => a !== null) || [],
+
+                coautores:
+                    applicationData.autores?.filter(a =>
+                        a !== null && a.orden_autor !== 'principal'
+                    ) || [],
+
+                documentos:
+                    applicationData.documentos?.filter(d => d !== null) || [],
+
                 checkboxes: {
                     acepta_terminos: applicationData.acepta_terminos,
                     formato_ajustado: applicationData.formato_ajustado,
@@ -396,21 +442,47 @@ class ApplicationController {
         }
     }
 
+
+    /* ==============================================================
+       ===============   GET ALL DOCUMENTS + APPLICATION   ===========
+       ============================================================== */
     async getDocumentsWithApplicationDetails(req, res) {
         try {
             const documents = await applicationService.getDocumentsWithApplicationDetails();
+
             return res.status(200).json({
                 success: true,
                 data: documents
             });
+
         } catch (error) {
             console.error('Error al obtener documentos con detalles de solicitud:', error);
+
             return res.status(500).json({
                 success: false,
                 message: 'Error al obtener documentos'
             });
         }
     }
+
+        async getStudents(req, res) {
+        try {
+            const rows = await applicationService.getStudents();
+            return res.status(200).json({ success: true, data: rows });
+        } catch (err) {
+            return res.status(500).json({ success: false, message: "Error cargando estudiantes" });
+        }
+    }
+
+    async getTeachers(req, res) {
+        try {
+            const rows = await applicationService.getTeachers();
+            return res.status(200).json({ success: true, data: rows });
+        } catch (err) {
+            return res.status(500).json({ success: false, message: "Error cargando docentes" });
+        }
+    }
+
 }
 
 export default new ApplicationController();
