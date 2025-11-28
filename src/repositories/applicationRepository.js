@@ -79,16 +79,12 @@ class ApplicationRepository {
         return result.insertId;
     }
 
-    /** 🔵 LISTA SOLO ESTUDIANTES, 1 FILA POR SOLICITUD
-     *   - nombre_archivo = primer autor (nombres + apellidos)
-     *   - autores_busqueda = todos los autores/coautores para el buscador
-     */
     async getStudents() {
         const query = `
             SELECT 
                 s.id_solicitud,
                 s.fecha_solicitud AS fecha_subida,
-                s.nombres,
+                s.nombre_st,
                 s.apellidos,
                 s.dni,
                 s.escuela_profesional,
