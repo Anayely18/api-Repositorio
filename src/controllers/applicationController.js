@@ -376,9 +376,9 @@ class ApplicationController {
        ============================================================== */
     async getTeacherApplicationDetails(req, res) {
         try {
-            const { applicationId } = req.params;
+            const { Id } = req.params;
 
-            if (!applicationId) {
+            if (!Id) {
                 return res.status(400).json({
                     success: false,
                     message: 'ID de solicitud requerido'

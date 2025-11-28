@@ -84,7 +84,7 @@ class ApplicationRepository {
             SELECT 
                 s.id_solicitud,
                 s.fecha_solicitud AS fecha_subida,
-                s.nombre_st,
+                s.nombres,
                 s.apellidos,
                 s.dni,
                 s.escuela_profesional,
