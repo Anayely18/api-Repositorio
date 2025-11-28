@@ -1,129 +1,55 @@
-import pool from "../config/database.js";
+// src/services/applicationService.js
+import { v4 as uuidv4 } from "uuid";
+import applicationRepository from "../repositories/applicationRepository.js";
 
-class ApplicationRepository {
+class ApplicationService {
+  /** Crear solicitud (estudiante o docente) */
+  async createApplication(data) {
+    const id = uuidv4();
+    const now = new Date().toISOString().slice(0, 19).replace("T", " ");
 
-    /* ============================================================
-       INSERTAR SOLICITUD
-    ============================================================ */
-    async create(
-        id,
-        applicationType,
-        name,
-        surname,
-        email,
-        dni,
-        contactNumber,
-        professionalSchool,
-        acceptTerms,
-        ajustedFormat,
-        errorsRead,
-        informedProcedure,
-        declaresTruth,
-        financingType,
-        projectName,
-        observations,
-        linkToPublishedTesis,
-        status,
-        applicationDate,
-        createdAt,
-        updatedAt
-    ) {
-        const query = `
-            INSERT INTO t_solicitudes (
-                id_solicitud,
-                tipo_solicitud,
-                nombres,
-                apellidos,
-                email,
-                dni,
-                numero_contacto,
-                escuela_profesional,
-                acepta_terminos,
-                formato_ajustado,
-                errores_leidos,
-                tramite_informado,
-                declara_verdad,
-                tipo_financiamiento,
-                nombre_proyecto,
-                observaciones,
-                link_tesis_publicada,
-                estado,
-                fecha_solicitud,
-                created_at,
-                updated_at
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-        `;
-
-        await pool.execute(query, [
-            id,
-            applicationType,
-            name,
-            surname,
-            email,
-            dni,
-            contactNumber,
-            professionalSchool,
-            acceptTerms,
-            ajustedFormat,
-            errorsRead,
-            informedProcedure,
-            declaresTruth,
-            financingType,
-            projectName,
-            observations,
-            linkToPublishedTesis,
-            status,
-            applicationDate,
-            createdAt,
-            updatedAt
-        ]);
-
-        return id;
+    // Asegurar que siempre haya un email (por la UNIQUE de la BD)
+    let email = data.email;
+    if (!email || email.trim() === "") {
+      email = `no-email-${data.dni || id}@noemail.local`;
     }
 
-    /* ============================================================
-       OBTENER LISTA DE ESTUDIANTES (CRUD)
-    ============================================================ */
-    async getStudents() {
-        const query = `
-            SELECT
-                s.id_solicitud,
-                s.nombre_proyecto AS nombre_archivo,
-                s.apellidos,
-                s.dni,
-                s.escuela_profesional,
-                s.observaciones,
-                s.fecha_solicitud AS fecha_subida
-            FROM t_solicitudes s
-            WHERE s.tipo_solicitud = 'estudiante'
-            ORDER BY s.fecha_solicitud DESC
-        `;
-        const [rows] = await pool.execute(query);
-        return rows;
-    }
+    await applicationRepository.create(
+      id,
+      data.applicationType,        // 'estudiante' | 'docente'
+      data.name,
+      data.surname,
+      email,
+      data.dni,
+      data.contactNumber,
+      data.professionalSchool,
+      data.acceptTerms,
+      data.ajustedFormat,
+      data.errorsRead,
+      data.informedProcedure,
+      data.declaresTruth,
+      data.financingType,
+      data.projectName,
+      data.observations,
+      data.linkToPublishedTesis,
+      data.status,
+      data.applicationDate,
+      now,
+      now
+    );
 
-    /* ============================================================
-       OBTENER LISTA DE DOCENTES (CRUD)
-    ============================================================ */
-    async getTeachers() {
-        const query = `
-            SELECT
-                s.id_solicitud,
-                s.nombre_proyecto,
-                s.nombres,
-                s.apellidos,
-                s.dni,
-                s.escuela_profesional AS escuela,
-                s.fecha_solicitud AS fecha_subida,
-                s.observaciones
-            FROM t_solicitudes s
-            WHERE s.tipo_solicitud = 'docente'
-            ORDER BY s.fecha_solicitud DESC
-        `;
-        const [rows] = await pool.execute(query);
-        return rows;
-    }
+    return { application: { id } };
+  }
 
+  /** Lista para CRUD de estudiantes */
+  async getStudents() {
+    return await applicationRepository.getStudents();
+  }
+
+  /** Lista para CRUD de docentes */
+  async getTeachers() {
+    return await applicationRepository.getTeachers();
+  }
 }
 
-export default new ApplicationRepository();
+export default new ApplicationService();
