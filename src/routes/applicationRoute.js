@@ -131,4 +131,13 @@ router.get(
     (req, res) => applicationController.getTeachers(req, res)
 );
 
+//GET DETAILS 
+router.get(
+  '/details/:id',
+  (req, res) => applicationController.getTeacherApplicationDetails(req, res)
+);
+
+
+
+
 export default router;
