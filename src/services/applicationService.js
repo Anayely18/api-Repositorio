@@ -41,12 +41,10 @@ class ApplicationService {
     return { application: { id } };
   }
 
-  /** Lista para CRUD de estudiantes */
   async getStudents() {
     return await applicationRepository.getStudents();
   }
 
-  /** Lista para CRUD de docentes */
   async getTeachers() {
     return await applicationRepository.getTeachers();
   }
