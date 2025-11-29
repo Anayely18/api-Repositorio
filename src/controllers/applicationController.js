@@ -3,7 +3,7 @@ import authorService from '../services/authorService.js';
 import advisorService from '../services/advisorService.js';
 import juryService from '../services/juryService.js';
 import documentService from '../services/documentService.js';
-
+import { formatApplicationData } from '../utils/formatApplication.js';
 class ApplicationController {
 
     /* ==============================================================
@@ -370,78 +370,38 @@ class ApplicationController {
 
 
 
-
     /* ==============================================================
        ===============   GET TEACHER APPLICATION DETAILS   ===========
        ============================================================== */
     async getTeacherApplicationDetails(req, res) {
         try {
-            const { Id } = req.params;
+            const { id } = req.params;
+            if (!id) return res.status(400).json({ success: false, message: 'ID requerido' });
 
-            if (!Id) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'ID de solicitud requerido'
-                });
-            }
+            const data = await applicationService.getApplicationWithRelatedData(id);
+            if (!data) return res.status(404).json({ success: false, message: 'No encontrado' });
 
-            const applicationData =
-                await applicationService.getApplicationWithRelatedData(applicationId);
-
-            if (!applicationData) {
-                return res.status(404).json({
-                    success: false,
-                    message: 'Solicitud no encontrada'
-                });
-            }
-
-            const cleanData = {
-                solicitud: {
-                    id: applicationData.id_solicitud,
-                    tipo: applicationData.tipo_solicitud,
-                    titulo: applicationData.nombre_proyecto,
-                    estado: applicationData.estado,
-                    fecha_solicitud: applicationData.fecha_solicitud
-                },
-                autor_principal: {
-                    nombres: applicationData.nombres,
-                    apellidos: applicationData.apellidos,
-                    dni: applicationData.dni,
-                    escuela: applicationData.escuela_profesional
-                },
-                autores:
-                    applicationData.autores?.filter(a => a !== null) || [],
-
-                coautores:
-                    applicationData.autores?.filter(a =>
-                        a !== null && a.orden_autor !== 'principal'
-                    ) || [],
-
-                documentos:
-                    applicationData.documentos?.filter(d => d !== null) || [],
-
-                checkboxes: {
-                    acepta_terminos: applicationData.acepta_terminos,
-                    formato_ajustado: applicationData.formato_ajustado,
-                    errores_leidos: applicationData.errores_leidos,
-                    tramite_informado: applicationData.tramite_informado
-                }
-            };
-
-            return res.status(200).json({
-                success: true,
-                data: cleanData
-            });
-
-        } catch (error) {
-            console.error('Error al obtener detalles de solicitud:', error);
-            return res.status(500).json({
-                success: false,
-                message: 'Error al obtener detalles de solicitud'
-            });
+            return res.status(200).json({ success: true, data: formatApplicationData(data, 'docente') });
+        } catch (err) {
+            console.error('Error en detalles docente:', err);
+            return res.status(500).json({ success: false, message: 'Error interno' });
         }
     }
 
+    async getStudentApplicationDetails(req, res) {
+        try {
+            const { id } = req.params;
+            if (!id) return res.status(400).json({ success: false, message: 'ID requerido' });
+
+            const data = await applicationService.getApplicationWithRelatedData(id);
+            if (!data) return res.status(404).json({ success: false, message: 'No encontrado' });
+
+            return res.status(200).json({ success: true, data: formatApplicationData(data, 'estudiante') });
+        } catch (err) {
+            console.error('Error en detalles estudiante:', err);
+            return res.status(500).json({ success: false, message: 'Error interno' });
+        }
+    }
 
     /* ==============================================================
        ===============   GET ALL DOCUMENTS + APPLICATION   ===========
@@ -465,7 +425,7 @@ class ApplicationController {
         }
     }
 
-        async getStudents(req, res) {
+    async getStudents(req, res) {
         try {
             const rows = await applicationService.getStudents();
             return res.status(200).json({ success: true, data: rows });
