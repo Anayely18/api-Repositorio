@@ -47,7 +47,7 @@ class ApplicationController {
             /* ========================
                REGISTRO DE AUTORES
                ======================== */
-            const authorOrders = ['principal', 'segundo', 'tercero', 'coautor'];
+            const authorOrders = ['principal', 'segundo', 'tercero'];
 
             if (students?.length > 0) {
                 for (let i = 0; i < students.length; i++) {
