@@ -43,11 +43,7 @@ class ApplicationController {
 
             const idApplication = application.application.id;
 
-
-            /* ========================
-               REGISTRO DE AUTORES
-               ======================== */
-            const authorOrders = ['principal', 'segundo', 'tercero'];
+            const authorOrders = ['principal', 'segundo', 'tercero', 'coautor'];
 
             if (students?.length > 0) {
                 for (let i = 0; i < students.length; i++) {
@@ -67,10 +63,6 @@ class ApplicationController {
                 }
             }
 
-
-            /* ===========================
-               REGISTRO DE ASESORES
-               =========================== */
             const advisorOrders = ['primero', 'segundo'];
 
             if (advisors?.length > 0) {
@@ -89,10 +81,6 @@ class ApplicationController {
                 }
             }
 
-
-            /* ===========================
-               REGISTRO DE JURADO
-               =========================== */
             const juryRoles = ['presidente', 'primer_miembro', 'segundo_miembro'];
 
             if (jury?.length > 0) {
@@ -124,11 +112,6 @@ class ApplicationController {
                     }
                 }
             }
-
-
-            /* ==============================
-               DOCUMENTOS DEL ESTUDIANTE
-               ============================== */
             const documentTypes = {
                 authorization: 'hoja_autorizacion',
                 certificate: 'constancia_empastado',
@@ -166,13 +149,6 @@ class ApplicationController {
         }
     }
 
-
-
-
-
-    /* ==============================================================
-       ===============   CREATE APPLICATION TEACHER   ===============
-       ============================================================== */
     async createTeacherApplication(req, res) {
 
         console.log("📌 ENTRÓ A createTeacherApplication (DOCENTE)");
@@ -226,10 +202,6 @@ class ApplicationController {
                 });
             }
 
-
-            /* =============================
-               CREAR LA SOLICITUD DOCENTE
-               ============================= */
             const application = await applicationService.createApplication({
                 applicationType: 'docente',
                 name: firstTeacher.nombres,
@@ -258,10 +230,6 @@ class ApplicationController {
 
             const idApplication = application.application.id;
 
-
-            /* =============================================
-               REGISTRO DE AUTORES DOCENTES
-               ============================================= */
             const authorOrders = ['principal', 'segundo', 'tercero'];
 
             for (let i = 0; i < teachers.length; i++) {
