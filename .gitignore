@@ -26,3 +26,5 @@ dist-ssr
 uploads/
 temp/
 logs/
+
+.env

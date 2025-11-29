@@ -47,7 +47,7 @@ class ApplicationController {
             /* ========================
                REGISTRO DE AUTORES
                ======================== */
-            const authorOrders = ['autor', 'coautor'];
+            const authorOrders = ['principal', 'segundo', 'tercero', 'coautor'];
 
             if (students?.length > 0) {
                 for (let i = 0; i < students.length; i++) {
@@ -56,7 +56,7 @@ class ApplicationController {
                     if (s && s.dni) {
                         await authorService.createAuthor(
                             idApplication,
-                            authorOrders[i] ?? 'coautor',
+                            authorOrders[i] ?? 'principal',
                             s.nombres ?? null,
                             s.apellidos ?? null,
                             s.dni ?? null,
