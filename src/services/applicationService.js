@@ -48,6 +48,8 @@ class ApplicationService {
   async getTeachers() {
     return await applicationRepository.getTeachers();
   }
+
+  
 }
 
 export default new ApplicationService();
