@@ -1,14 +1,12 @@
-// src/services/applicationService.js
 import { v4 as uuidv4 } from "uuid";
 import applicationRepository from "../repositories/applicationRepository.js";
 
 class ApplicationService {
-  /** Crear solicitud (estudiante o docente) */
+
   async createApplication(data) {
     const id = uuidv4();
     const now = new Date().toISOString().slice(0, 19).replace("T", " ");
 
-    // Asegurar que siempre haya un email (por la UNIQUE de la BD)
     let email = data.email;
     if (!email || email.trim() === "") {
       email = `no-email-${data.dni || id}@noemail.local`;
@@ -16,7 +14,7 @@ class ApplicationService {
 
     await applicationRepository.create(
       id,
-      data.applicationType,        // 'estudiante' | 'docente'
+      data.applicationType,        
       data.name,
       data.surname,
       email,
@@ -41,14 +39,13 @@ class ApplicationService {
     return { application: { id } };
   }
 
-  async getStudents() {
-    return await applicationRepository.getStudents();
+  async getApplications(options) {
+    return await applicationRepository.getApplications(options);
   }
 
-  async getTeachers() {
-    return await applicationRepository.getTeachers();
+  async getDocumentsWithApplicationDetails(id) {
+    return await applicationRepository.getDocumentsWithApplicationDetails(id);
   }
-
   
 }
 

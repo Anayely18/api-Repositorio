@@ -6,9 +6,6 @@ import documentService from '../services/documentService.js';
 import { formatApplicationData } from '../utils/formatApplication.js';
 class ApplicationController {
 
-    /* ==============================================================
-       ===============   CREATE APPLICATION STUDENT   ===============
-       ============================================================== */
     async createApplication(req, res) {
 
         console.log("⚠️ ENTRÓ A createApplication (ESTUDIANTE), BODY:", req.body);
@@ -19,7 +16,6 @@ class ApplicationController {
 
             const firstStudent = students?.[0] || {};
 
-            // Crear la solicitud base
             const application = await applicationService.createApplication({
                 applicationType: 'estudiante',
                 name: firstStudent.nombres ?? null,
@@ -245,16 +241,12 @@ class ApplicationController {
                     t.dni,
                     t.orcid || null,
                     t.escuela || null,
-                    'autor',             // tipo_colaborador
-                    'interno',           // tipo_ubicacion
-                    'docente'            // tipo_rol
+                    'autor',
+                    'interno',
+                    'docente'
                 );
             }
 
-
-            /* =============================================
-               REGISTRO DE COAUTORES (DOCENTE)
-               ============================================= */
             if (coauthors?.length > 0) {
                 for (const c of coauthors) {
 
@@ -275,17 +267,12 @@ class ApplicationController {
                         c.dni,
                         c.orcid || null,
                         c.tipoUbicacion === 'interno' ? c.escuela || null : null,
-                        tipoColaborador,          // tipo_colaborador
-                        c.tipoUbicacion || null,  // tipo_ubicacion
-                        c.tipoRol || null         // tipo_rol
+                        tipoColaborador,
+                        c.tipoUbicacion || null,
+                        c.tipoRol || null
                     );
                 }
             }
-
-
-            /* =============================================
-               REGISTRO DE DOCUMENTOS DOCENTES
-               ============================================= */
             const documentTypes = {
                 authorization: 'hoja_autorizacion',
                 document: 'constancia_empastado',
@@ -336,20 +323,15 @@ class ApplicationController {
         }
     }
 
-
-
-    /* ==============================================================
-       ===============   GET TEACHER APPLICATION DETAILS   ===========
-       ============================================================== */
     async getTeacherApplicationDetails(req, res) {
         try {
             const { id } = req.params;
             if (!id) return res.status(400).json({ success: false, message: 'ID requerido' });
 
-            const data = await applicationService.getApplicationWithRelatedData(id);
+            const data = await applicationService.getDocumentsWithApplicationDetails(id);
             if (!data) return res.status(404).json({ success: false, message: 'No encontrado' });
 
-            return res.status(200).json({ success: true, data: formatApplicationData(data, 'docente') });
+            return res.status(200).json({ success: true, data: data });
         } catch (err) {
             console.error('Error en detalles docente:', err);
             return res.status(500).json({ success: false, message: 'Error interno' });
@@ -361,7 +343,7 @@ class ApplicationController {
             const { id } = req.params;
             if (!id) return res.status(400).json({ success: false, message: 'ID requerido' });
 
-            const data = await applicationService.getApplicationWithRelatedData(id);
+            const data = await applicationService.getDocumentsWithApplicationDetails(id);
             if (!data) return res.status(404).json({ success: false, message: 'No encontrado' });
 
             return res.status(200).json({ success: true, data: formatApplicationData(data, 'estudiante') });
@@ -371,12 +353,10 @@ class ApplicationController {
         }
     }
 
-    /* ==============================================================
-       ===============   GET ALL DOCUMENTS + APPLICATION   ===========
-       ============================================================== */
     async getDocumentsWithApplicationDetails(req, res) {
         try {
-            const documents = await applicationService.getDocumentsWithApplicationDetails();
+            const { id } = req.params;
+            const documents = await applicationService.getDocumentsWithApplicationDetails(id);
 
             return res.status(200).json({
                 success: true,
@@ -393,24 +373,52 @@ class ApplicationController {
         }
     }
 
-    async getStudents(req, res) {
+    async getApplications(req, res) {
         try {
-            const rows = await applicationService.getStudents();
-            return res.status(200).json({ success: true, data: rows });
-        } catch (err) {
-            return res.status(500).json({ success: false, message: "Error cargando estudiantes" });
+            const page = parseInt(req.query.page) || 1;
+            const limit = parseInt(req.query.limit) || 10;
+            const status = req.query.status || null;
+            const search = req.query.search || null;
+            const professionalSchool = req.query.professionalSchool || null;
+            const condition = req.query.condition ?? 'estudiante';
+
+            if (page < 1) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'El número de página debe ser mayor a 0'
+                });
+            }
+
+            if (limit < 1 || limit > 100) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'El límite debe estar entre 1 y 100'
+                });
+            }
+
+            const result = await applicationService.getApplications({
+                page,
+                limit,
+                status,
+                search,
+                professionalSchool,
+                condition
+            });
+
+            return res.status(200).json({
+                success: true,
+                ...result
+            });
+
+        } catch (error) {
+            console.error('Error en getStudents:', error);
+            return res.status(500).json({
+                success: false,
+                message: 'Error al obtener estudiantes',
+                error: error.message
+            });
         }
     }
-
-    async getTeachers(req, res) {
-        try {
-            const rows = await applicationService.getTeachers();
-            return res.status(200).json({ success: true, data: rows });
-        } catch (err) {
-            return res.status(500).json({ success: false, message: "Error cargando docentes" });
-        }
-    }
-
 }
 
 export default new ApplicationController();

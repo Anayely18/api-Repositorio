@@ -18,28 +18,56 @@ class Application {
         this.applicationDate = data.fecha_solicitud;
         this.createdAt = data.created_at;
         this.updatedAt = data.updated_at;
+
+        this.searchAuthors = data.autores_busqueda;
     }
 
     toDatabase() {
-        return {
-            id_solicitud: this.id,
-            tipo_solicitud: this.applicationType,
-            nombres: this.name,
-            apellidos: this.surname,
+        const json = {
+            id: this.id,
+            applicationType: this.applicationType,
+            name: this.name,
+            surname: this.surname,
             dni: this.dni,
-            numero_contacto: this.contactNumber,
-            escuela_profesional: this.professionalSchool,
-            acepta_terminos: this.acceptTerms,
-            formato_ajustado: this.ajustedFormat,
-            errores_leidos: this.errorsRead,
-            tramite_informado: this.informedProcedure,
-            nombre_proyecto: this.projectName,
-            observaciones: this.observations,
-            link_tesis_publicada: this.linkToPublishedTesis,
-            estado: this.status,
-            fecha_solicitud: this.applicationDate,
-            created_at: this.createdAt,
-            updated_at: this.updatedAt
+            contactNumber: this.contactNumber,
+            professionalSchool: this.professionalSchool,
+            acceptTerms: this.acceptTerms,
+            ajustedFormat: this.ajustedFormat,
+            errorsRead: this.errorsRead,
+            informedProcedure: this.informedProcedure,
+            projectName: this.projectName,
+            observations: this.observations,
+            linkToPublishedTesis: this.linkToPublishedTesis,
+            status: this.status,
+            applicationDate: this.applicationDate,
+            createdAt: this.createdAt,
+            updatedAt: this.updatedAt
+        };
+
+        if (this.email) json.email = this.email;
+        if (this.financingType) json.financingType = this.financingType;
+        if (this.declaresTruth !== undefined) json.declaresTruth = this.declaresTruth;
+        if (this.searchAuthors) json.searchAuthors = this.searchAuthors;
+
+        return json;
+    }
+
+    toListJSON() {
+        return {
+            id: this.id,
+            applicationType: this.applicationType,
+            name: this.name,
+            surname: this.surname,
+            dni: this.dni,
+            professionalSchool: this.professionalSchool,
+            projectName: this.projectName,
+            status: this.status,
+            applicationDate: this.applicationDate,
+            observations: this.observations,
+            searchAuthors: this.searchAuthors,
+            applicationDate: this.applicationDate,
+            createdAt: this.createdAt,
+            updatedAt: this.updatedAt
         };
     }
 
