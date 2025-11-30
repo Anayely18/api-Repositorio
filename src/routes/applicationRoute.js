@@ -6,10 +6,6 @@ import applicationController from '../controllers/applicationController.js';
 
 const router = Router();
 
-/* ==========================
-   STORAGE MULTER
-   ========================== */
-
 const storage = multer.diskStorage({
     destination: function (req, file, cb) {
 
@@ -39,9 +35,6 @@ const upload = multer({
     }
 });
 
-/* ==========================
-   CAMPOS PARA FORMULARIOS
-   ========================== */
 
 const uploadFieldsStudent = upload.fields([
     { name: 'authorization', maxCount: 1 },
@@ -56,10 +49,6 @@ const uploadFieldsTeacher = upload.fields([
     { name: 'similarity', maxCount: 1 },
     { name: 'report', maxCount: 1 }
 ]);
-
-/* ==========================
-   PARSEADOR FORM-DATA
-   ========================== */
 
 const parseFormData = (req, res, next) => {
     try {
@@ -78,7 +67,6 @@ const parseFormData = (req, res, next) => {
             }
         }
 
-        // adaptar req.files
         if (req.files) {
             const simplified = {};
             for (const [key, fileArr] of Object.entries(req.files)) {
@@ -99,11 +87,6 @@ const parseFormData = (req, res, next) => {
     }
 };
 
-/* ==========================
-   RUTAS API
-   ========================== */
-
-// CREATE STUDENT APPLICATION
 router.post(
     '/students',
     uploadFieldsStudent,
@@ -111,7 +94,6 @@ router.post(
     (req, res) => applicationController.createApplication(req, res)
 );
 
-// CREATE TEACHER APPLICATION
 router.post(
     '/teachers',
     uploadFieldsTeacher,
@@ -119,25 +101,14 @@ router.post(
     (req, res) => applicationController.createTeacherApplication(req, res)
 );
 
-// GET LIST STUDENTS
 router.get(
-    '/students',
-    (req, res) => applicationController.getStudents(req, res)
+    '/list',
+    (req, res) => applicationController.getApplications(req, res)
 );
 
-// GET LIST TEACHERS
 router.get(
-    '/teachers',
-    (req, res) => applicationController.getTeachers(req, res)
+    '/details/:id',
+    (req, res) => applicationController.getTeacherApplicationDetails(req, res)
 );
-
-//GET DETAILS 
-router.get(
-  '/details/:id',
-  (req, res) => applicationController.getTeacherApplicationDetails(req, res)
-);
-
-
-
 
 export default router;
