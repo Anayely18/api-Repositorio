@@ -230,7 +230,7 @@ class ApplicationController {
 
             const idApplication = application.application.id;
 
-            const authorOrders = ['principal', 'segundo', 'tercero'];
+            const authorOrders = ['principal', 'segundo', 'tercero', 'coautor'];
 
             for (let i = 0; i < teachers.length; i++) {
                 const t = teachers[i];
