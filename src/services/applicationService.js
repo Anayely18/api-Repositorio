@@ -1,75 +1,55 @@
+// src/services/applicationService.js
 import { v4 as uuidv4 } from "uuid";
 import applicationRepository from "../repositories/applicationRepository.js";
 
 class ApplicationService {
-    async createApplication({
-        applicationType,
-        name,
-        surname,
-        email,
-        dni,
-        contactNumber,
-        professionalSchool,
-        acceptTerms,
-        ajustedFormat,
-        errorsRead,
-        informedProcedure,
-        declaresTruth,
-        financingType,
-        projectName,
-        observations,
-        linkToPublishedTesis,
-        status,
-        applicationDate
-    }) {
-        const id = uuidv4();
-        const now = new Date().toISOString().slice(0, 19).replace("T", " ");
+  /** Crear solicitud (estudiante o docente) */
+  async createApplication(data) {
+    const id = uuidv4();
+    const now = new Date().toISOString().slice(0, 19).replace("T", " ");
 
-        // Asegurar que email no sea nulo, y sea único aunque sea “falso”
-        let finalEmail = email;
-        if (!finalEmail || finalEmail.trim() === "") {
-            // Genera uno sintético basado en el DNI para evitar violar UNIQUE
-            finalEmail = `no-email-${dni || id}@noemail.local`;
-        }
-
-        const createdAt = now;
-        const updatedAt = now;
-
-        const insertId = await applicationRepository.create(
-            id,
-            applicationType,
-            name,
-            surname,
-            finalEmail,
-            dni,
-            contactNumber,
-            professionalSchool,
-            !!acceptTerms,
-            !!ajustedFormat,
-            !!errorsRead,
-            !!informedProcedure,
-            !!declaresTruth,
-            financingType || null,
-            projectName,
-            observations,
-            linkToPublishedTesis,
-            status,
-            applicationDate,
-            createdAt,
-            updatedAt
-        );
-
-        return {
-            application: {
-                id,
-                insertId
-            }
-        };
+    // Asegurar que siempre haya un email (por la UNIQUE de la BD)
+    let email = data.email;
+    if (!email || email.trim() === "") {
+      email = `no-email-${data.dni || id}@noemail.local`;
     }
 
-    async getDocumentsWithApplicationDetails() {
-        return await applicationRepository.getDocumentsWithApplicationDetails();
-    }
+    await applicationRepository.create(
+      id,
+      data.applicationType,        // 'estudiante' | 'docente'
+      data.name,
+      data.surname,
+      email,
+      data.dni,
+      data.contactNumber,
+      data.professionalSchool,
+      data.acceptTerms,
+      data.ajustedFormat,
+      data.errorsRead,
+      data.informedProcedure,
+      data.declaresTruth,
+      data.financingType,
+      data.projectName,
+      data.observations,
+      data.linkToPublishedTesis,
+      data.status,
+      data.applicationDate,
+      now,
+      now
+    );
+
+    return { application: { id } };
+  }
+
+  async getStudents() {
+    return await applicationRepository.getStudents();
+  }
+
+  async getTeachers() {
+    return await applicationRepository.getTeachers();
+  }
+
+  
 }
 
 export default new ApplicationService();

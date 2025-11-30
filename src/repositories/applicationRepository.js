@@ -1,6 +1,8 @@
+// src/repositories/applicationRepository.js
 import pool from "../config/database.js";
 
 class ApplicationRepository {
+
     async create(
         id,
         applicationType,
@@ -77,22 +79,72 @@ class ApplicationRepository {
         return result.insertId;
     }
 
-    async getDocumentsWithApplicationDetails() {
+    async getStudents() {
         const query = `
             SELECT 
-                CONCAT(s.nombres, ' ', s.apellidos) AS nombre_archivo,
-                d.fecha_subida,
+                s.id_solicitud,
+                s.fecha_solicitud AS fecha_subida,
+                s.nombres,
+                s.apellidos,
+                s.dni,
+                s.escuela_profesional,
+                s.observaciones,
+                COALESCE(
+                    GROUP_CONCAT(DISTINCT CONCAT(a.nombres, ' ', a.apellidos) SEPARATOR ' | '),
+                    CONCAT(s.nombres, ' ', s.apellidos)
+                ) AS autores_busqueda
+            FROM t_solicitudes s
+            LEFT JOIN t_autores a ON a.id_solicitud = s.id_solicitud
+            WHERE s.tipo_solicitud = 'estudiante'
+            GROUP BY 
+                s.id_solicitud,
+                s.fecha_solicitud,
+                s.nombres,
                 s.apellidos,
                 s.dni,
                 s.escuela_profesional,
                 s.observaciones
-            FROM t_documentos d
-            INNER JOIN t_solicitudes s ON d.id_solicitud = s.id_solicitud
-            ORDER BY d.fecha_subida DESC
+            ORDER BY s.fecha_solicitud DESC
         `;
         const [rows] = await pool.execute(query);
         return rows;
     }
+
+    /** 🟢 LISTA SOLO DOCENTES, 1 FILA POR SOLICITUD
+     *   - nombres / apellidos = primer autor (campo de t_solicitudes)
+     *   - autores_busqueda = todos los autores/coautores para el buscador
+     */
+    async getTeachers() {
+        const query = `
+            SELECT 
+                s.id_solicitud,
+                s.fecha_solicitud AS fecha_subida,
+                s.nombres,
+                s.apellidos,
+                s.dni,
+                s.escuela_profesional,
+                s.observaciones,
+                COALESCE(
+                    GROUP_CONCAT(DISTINCT CONCAT(a.nombres, ' ', a.apellidos) SEPARATOR ' | '),
+                    CONCAT(s.nombres, ' ', s.apellidos)
+                ) AS autores_busqueda
+            FROM t_solicitudes s
+            LEFT JOIN t_autores a ON a.id_solicitud = s.id_solicitud
+            WHERE s.tipo_solicitud = 'docente'
+            GROUP BY 
+                s.id_solicitud,
+                s.fecha_solicitud,
+                s.nombres,
+                s.apellidos,
+                s.dni,
+                s.escuela_profesional,
+                s.observaciones
+            ORDER BY s.fecha_solicitud DESC
+        `;
+        const [rows] = await pool.execute(query);
+        return rows;
+    }
+
 }
 
 export default new ApplicationRepository();
