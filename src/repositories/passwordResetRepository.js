@@ -42,11 +42,14 @@ class PasswordResetRepository {
         const now = new Date();
         const expiresAt = new Date(record.expira_en);
 
+        
+
         if (expiresAt <= now) {
             return null; 
         }
 
         return record;
+        
     }
 
     async markAsUsed(id) {
