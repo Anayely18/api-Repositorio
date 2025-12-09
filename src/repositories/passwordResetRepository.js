@@ -50,6 +50,7 @@ class PasswordResetRepository {
 
         return record;
         
+        
     }
 
     async markAsUsed(id) {
