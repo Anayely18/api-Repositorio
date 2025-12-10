@@ -3,36 +3,57 @@ import { v4 as uuidv4 } from 'uuid'
 class PasswordResetRepository {
 
     async saveVerificationCode(email, code, expiresAt) {
+        // ✅ Limpia el email de espacios y convierte a minúsculas
+        const cleanEmail = email.trim().toLowerCase();
+        const codeStr = String(code).trim();
 
-        await this.deleteByEmail(email);
+        console.log('💾 Guardando código:');
+        console.log('   Email original:', `"${email}"`);
+        console.log('   Email limpio:', `"${cleanEmail}"`);
+        console.log('   Código:', codeStr);
+
+        await this.deleteByEmail(cleanEmail);
+
         const id = uuidv4();
-        const now = new Date().toISOString().slice(0, 19).replace("T", " ");
-        const createdAt = now;
-        const updatedAt = now;
+        const now = new Date();
+        const expiresAtFormatted = expiresAt.toISOString().slice(0, 19).replace("T", " ");
+        const nowFormatted = now.toISOString().slice(0, 19).replace("T", " ");
 
         const query = `
-            INSERT INTO t_codigo_verificacion (id_codigo_verificacion, email, codigo, expira_en, created_at, updated_at) 
-            VALUES (?, ?, ?, ?, ?, ?)
-        `;
+        INSERT INTO t_codigo_verificacion (id_codigo_verificacion, email, codigo, expira_en, created_at, updated_at) 
+        VALUES (?, ?, ?, ?, ?, ?)
+    `;
 
-        const [result] = await pool.execute(query, [id, email, code, expiresAt, createdAt, updatedAt]);
+        const [result] = await pool.execute(query, [id, cleanEmail, codeStr, expiresAtFormatted, nowFormatted, nowFormatted]);
         return result.insertId;
     }
 
     async findValidCode(email, code) {
-        const query = `
-            SELECT *, 
-                   expira_en,
-                   NOW() as hora_actual,
-                   CASE 
-                       WHEN expira_en > NOW() THEN 'VALIDO'
-                       ELSE 'EXPIRADO'
-                   END as estado
-            FROM t_codigo_verificacion
-            WHERE email = ? AND codigo = ? AND usado = FALSE
-        `;
+        const cleanEmail = email.trim().toLowerCase();
+        const codeStr = String(code).trim();
 
-        const [rows] = await pool.execute(query, [email, code]);
+        console.log('🔍 Buscando código:');
+        console.log('   Email:', `"${cleanEmail}"`);
+        console.log('   Código:', `"${codeStr}"`);
+
+        const query = `
+        SELECT 
+            id_codigo_verificacion,
+            email,
+            codigo,
+            expira_en,
+            usado,
+            NOW() as hora_actual,
+            TIMESTAMPDIFF(SECOND, NOW(), expira_en) as segundos_restantes
+        FROM t_codigo_verificacion
+        WHERE TRIM(LOWER(email)) = ? 
+          AND TRIM(codigo) = ? 
+          AND (usado = FALSE OR usado IS NULL)
+    `;
+
+        const [rows] = await pool.execute(query, [cleanEmail, codeStr]);
+
+        console.log('   Resultados encontrados:', rows.length);
 
         if (rows.length === 0) {
             return null;
@@ -42,17 +63,19 @@ class PasswordResetRepository {
         const now = new Date();
         const expiresAt = new Date(record.expira_en);
 
-        
+        console.log('⏰ Validando expiración:');
+        console.log('   Ahora:', now.toISOString());
+        console.log('   Expira:', expiresAt.toISOString());
+        console.log('   Segundos restantes:', record.segundos_restantes);
 
         if (expiresAt <= now) {
-            return null; 
+            console.log('❌ Código expirado');
+            return null;
         }
 
+        console.log('✅ Código válido encontrado');
         return record;
-        
-        
     }
-
     async markAsUsed(id) {
         const query = 'UPDATE t_codigo_verificacion SET usado = TRUE WHERE id_codigo_verificacion = ?';
         await pool.execute(query, [id]);

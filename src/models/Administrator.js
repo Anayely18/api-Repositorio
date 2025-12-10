@@ -9,7 +9,7 @@ class Administrator {
         this.password = data.contrasena;
         this.createdAt = data.created_at;
         this.updatedAt = data.updated_at;
-        this.active = data.active;
+        this.active = data.activo;
         this.lastAccess = data.ultimo_acceso;
     }
 

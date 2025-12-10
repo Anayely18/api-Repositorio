@@ -87,6 +87,29 @@ const parseFormData = (req, res, next) => {
     }
 };
 
+const uploads = multer({
+    storage,
+    limits: { fileSize: 10 * 1024 * 1024 },
+    fileFilter: (req, file, cb) => {
+        if (file.mimetype === 'application/pdf') cb(null, true);
+        else cb(new Error('Solo se permiten archivos PDF'), false);
+    }
+});
+
+// Nuevo upload para imágenes
+const uploadImages = multer({
+    storage,
+    limits: { fileSize: 10 * 1024 * 1024 },
+    fileFilter: (req, file, cb) => {
+        const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+        if (allowedTypes.includes(file.mimetype)) {
+            cb(null, true);
+        } else {
+            cb(new Error('Solo se permiten archivos de imagen (JPEG, PNG, GIF, WEBP)'), false);
+        }
+    }
+});
+
 router.post(
     '/students',
     uploadFieldsStudent,
@@ -112,7 +135,7 @@ router.get(
 
 router.get('/search', applicationController.getApplicationByDni);
 
-router.patch('/documents/:documentId/review', upload.array('images', 10), applicationController.updateDocumentReview);
+router.patch('/documents/:documentId/review', uploadImages.array('images', 10), applicationController.updateDocumentReview);
 
 // Actualizar estado de la solicitud completa
 router.patch('/:id/review', applicationController.updateApplicationReview);

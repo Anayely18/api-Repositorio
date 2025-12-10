@@ -3,6 +3,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import authRoutes from './routes/authRoutes.js';
 import applicationRoutes from './routes/applicationRoute.js';
+import profileRoutes from './routes/profileRoutes.js'
 import path from "path";
 dotenv.config();
 
@@ -13,6 +14,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 app.use('/api/applications', applicationRoutes);
 app.use('/api/auth', authRoutes);
+app.use('/api/profile', profileRoutes); 
 app.get('/health', (req, res) => {
     res.json({ status: 'OK', message: 'Server is running' });
 });
