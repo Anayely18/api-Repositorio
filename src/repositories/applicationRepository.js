@@ -1,6 +1,6 @@
 import pool from "../config/database.js";
 import Application from "../models/Application.js";
-
+import { v4 as uuidv4 } from "uuid";
 class ApplicationRepository {
 
     async create(
@@ -372,7 +372,279 @@ class ApplicationRepository {
         };
     }
 
+    async getApplicationByDni(dni, applicationType) {
+        console.log('🔍 Repository - Buscando DNI:', dni, 'Tipo:', applicationType);
 
+        const query = `
+        SELECT 
+            s.id_solicitud,
+            s.tipo_solicitud,
+            s.nombres AS solicitante_nombres,
+            s.apellidos AS solicitante_apellidos,
+            s.email AS solicitante_email,
+            s.dni AS solicitante_dni,
+            s.numero_contacto,
+            s.escuela_profesional,
+            s.nombre_proyecto,
+            s.observaciones,
+            s.estado,
+            s.fecha_solicitud,
+            s.created_at AS solicitud_created_at,
+            s.updated_at AS solicitud_updated_at,
+            
+            IFNULL(
+                (SELECT JSON_ARRAYAGG(
+                    JSON_OBJECT(
+                        'document_id', d.id_documento,
+                        'document_type', d.tipo_documento,
+                        'file_name', d.nombre_archivo,
+                        'file_path', d.ruta_archivo,
+                        'status', d.estado,
+                        'rejection_reason', d.razon_rechazo,
+                        'upload_date', d.fecha_subida
+                    )
+                )
+                FROM t_documentos d
+                WHERE d.id_solicitud = s.id_solicitud),
+                '[]'
+            ) AS documentos,
+            
+            IFNULL(
+                (SELECT JSON_ARRAYAGG(
+                    JSON_OBJECT(
+                        'history_id', h.id_historial,
+                        'previous_status', h.estado_anterior,
+                        'new_status', h.estado_nuevo,
+                        'comment', h.comentario,
+                        'change_date', h.fecha_cambio,
+                        'admin_name', adm.nombre_usuario
+                    )
+                )
+                FROM t_historial_solicitudes h
+                LEFT JOIN t_administradores adm ON h.id_admin = adm.id_admin
+                WHERE h.id_solicitud = s.id_solicitud
+                ORDER BY h.fecha_cambio DESC),
+                '[]'
+            ) AS historial
+            
+        FROM t_solicitudes s
+        WHERE s.dni = ? AND s.tipo_solicitud = ?
+        ORDER BY s.fecha_solicitud DESC
+        LIMIT 1
+    `;
+
+        console.log('📝 Ejecutando query con params:', [dni, applicationType]);
+
+        try {
+            const [rows] = await pool.execute(query, [dni, applicationType]);
+
+            console.log('📊 Número de resultados:', rows.length);
+
+            if (rows.length > 0) {
+                console.log('✅ Registro encontrado:', {
+                    id: rows[0].id_solicitud,
+                    dni: rows[0].solicitante_dni,
+                    tipo: rows[0].tipo_solicitud,
+                    nombre: rows[0].solicitante_nombres
+                });
+            } else {
+                console.log('❌ No se encontraron resultados');
+
+                // Query de verificación para ver qué hay en la BD
+                const checkQuery = `
+                SELECT dni, tipo_solicitud, nombres, apellidos 
+                FROM t_solicitudes 
+                WHERE dni LIKE ? OR tipo_solicitud = ?
+                LIMIT 5
+            `;
+                const [checkRows] = await pool.execute(checkQuery, [`%${dni}%`, applicationType]);
+                console.log('🔍 Registros similares en BD:', checkRows);
+            }
+
+            if (rows.length === 0) {
+                return null;
+            }
+
+            const result = rows[0];
+
+            const safeJSONParse = (value) => {
+                if (!value || value === '' || value === 'null') {
+                    return [];
+                }
+                try {
+                    const parsed = JSON.parse(value);
+                    return Array.isArray(parsed) ? parsed : [];
+                } catch (error) {
+                    console.error('Error parsing JSON:', value, error);
+                    return [];
+                }
+            };
+
+            result.documentos = safeJSONParse(result.documentos);
+            result.historial = safeJSONParse(result.historial);
+
+            const formattedResult = {
+                application_id: result.id_solicitud,
+                application_type: result.tipo_solicitud,
+                applicant: {
+                    name: result.solicitante_nombres,
+                    surname: result.solicitante_apellidos,
+                    email: result.solicitante_email,
+                    dni: result.solicitante_dni,
+                    phone: result.numero_contacto,
+                    professional_school: result.escuela_profesional
+                },
+                project_name: result.nombre_proyecto,
+                observations: result.observaciones,
+                status: result.estado,
+                created_at: result.fecha_solicitud,
+                documents: result.documentos.map(doc => ({
+                    name: doc.document_type,
+                    status: doc.status,
+                    observation: doc.rejection_reason,
+                    images: []
+                })),
+                timeline: result.historial.map(h => ({
+                    date: h.change_date,
+                    status: h.new_status,
+                    description: h.comment || 'Cambio de estado'
+                }))
+            };
+
+            console.log('✅ Datos formateados correctamente');
+            return formattedResult;
+
+        } catch (error) {
+            console.error('❌ Error en query:', error);
+            throw error;
+        }
+    }
+
+    // En applicationRepository.js
+
+    async updateDocumentStatus(documentId, status, rejectionReason = null, images = []) {
+        const query = `
+        UPDATE t_documentos 
+        SET 
+            estado = ?,
+            razon_rechazo = ?,
+            updated_at = NOW()
+        WHERE id_documento = ?
+    `;
+
+        await pool.execute(query, [status, rejectionReason, documentId]);
+
+        // Si hay imágenes, guardarlas en una tabla relacionada
+        if (images && images.length > 0) {
+            await this.saveDocumentImages(documentId, images);
+        }
+
+        return { success: true };
+    }
+
+    async saveDocumentImages(documentId, images) {
+        // Crear tabla si no existe
+        const createTableQuery = `
+        CREATE TABLE IF NOT EXISTS t_documentos_imagenes (
+            id_imagen INT AUTO_INCREMENT PRIMARY KEY,
+            id_documento VARCHAR(36) NOT NULL,
+            ruta_imagen VARCHAR(500) NOT NULL,
+            nombre_archivo VARCHAR(255) NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (id_documento) REFERENCES t_documentos(id_documento) ON DELETE CASCADE
+        )
+    `;
+
+        await pool.execute(createTableQuery);
+
+        // Insertar imágenes
+        const insertQuery = `
+        INSERT INTO t_documentos_imagenes (id_documento, ruta_imagen, nombre_archivo)
+        VALUES (?, ?, ?)
+    `;
+
+        for (const image of images) {
+            await pool.execute(insertQuery, [
+                documentId,
+                image.path,
+                image.filename
+            ]);
+        }
+    }
+
+    async getDocumentImages(documentId) {
+        const query = `
+        SELECT 
+            id_imagen,
+            ruta_imagen,
+            nombre_archivo,
+            created_at
+        FROM t_documentos_imagenes
+        WHERE id_documento = ?
+        ORDER BY created_at DESC
+    `;
+
+        const [rows] = await pool.execute(query, [documentId]);
+        return rows;
+    }
+
+    async updateApplicationStatus(applicationId, newStatus, comment = null, adminId = null) {
+        // Actualizar estado de la solicitud
+        const updateQuery = `
+        UPDATE t_solicitudes 
+        SET 
+            estado = ?,
+            observaciones = ?,
+            updated_at = NOW()
+        WHERE id_solicitud = ?
+    `;
+
+        await pool.execute(updateQuery, [newStatus, comment, applicationId]);
+
+        const idHistory = uuidv4();
+        const historyQuery = `
+    INSERT INTO t_historial_solicitudes 
+    (id_historial, id_solicitud, estado_anterior, estado_nuevo, comentario, id_admin, fecha_cambio)
+    SELECT 
+        ?,        -- id_historial
+        ?,        -- id_solicitud
+        estado,   -- estado_anterior
+        ?,        -- estado_nuevo
+        ?,        -- comentario
+        ?,        -- id_admin
+        NOW()
+    FROM t_solicitudes 
+    WHERE id_solicitud = ?
+    LIMIT 1
+`;
+
+
+        await pool.execute(historyQuery, [
+            idHistory,
+            applicationId,
+            newStatus,
+            comment,
+            adminId,
+            applicationId
+        ]);
+
+        return { success: true };
+    }
+
+    async bulkUpdateDocuments(applicationId, documentUpdates) {
+        // documentUpdates es un array de { documentId, status, observation, images }
+
+        for (const update of documentUpdates) {
+            await this.updateDocumentStatus(
+                update.documentId,
+                update.status,
+                update.observation,
+                update.images
+            );
+        }
+
+        return { success: true };
+    }
 }
 
 export default new ApplicationRepository();

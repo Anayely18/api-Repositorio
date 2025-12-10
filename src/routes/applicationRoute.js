@@ -102,8 +102,7 @@ router.post(
 );
 
 router.get(
-    '/list',
-    (req, res) => applicationController.getApplications(req, res)
+    '/list', applicationController.getApplications
 );
 
 router.get(
@@ -111,4 +110,16 @@ router.get(
     (req, res) => applicationController.getTeacherApplicationDetails(req, res)
 );
 
+router.get('/search', applicationController.getApplicationByDni);
+
+router.patch('/documents/:documentId/review', upload.array('images', 10), applicationController.updateDocumentReview);
+
+// Actualizar estado de la solicitud completa
+router.patch('/:id/review', applicationController.updateApplicationReview);
+
+// Actualizar múltiples documentos a la vez
+router.patch('/:applicationId/documents/bulk-update', applicationController.bulkUpdateDocuments);
+
+// Consulta por DNI (ya existe)
+router.get('/search', applicationController.getApplicationByDni);
 export default router;
