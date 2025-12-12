@@ -139,7 +139,6 @@ router.patch('/documents/:documentId/review', uploadImages.array('images', 10), 
 
 // Actualizar estado de la solicitud completa
 router.patch('/:id/review', applicationController.updateApplicationReview);
-
 // Actualizar múltiples documentos a la vez
 router.patch('/:applicationId/documents/bulk-update', applicationController.bulkUpdateDocuments);
 

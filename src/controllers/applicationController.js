@@ -108,6 +108,7 @@ class ApplicationController {
                     }
                 }
             }
+            
             const documentTypes = {
                 authorization: 'hoja_autorizacion',
                 certificate: 'constancia_empastado',
@@ -480,6 +481,7 @@ class ApplicationController {
     async updateDocumentReview(req, res) {
         try {
             const { documentId } = req.params;
+            
             const { status, observation } = req.body;
             const images = req.files || [];
 
@@ -496,7 +498,7 @@ class ApplicationController {
                 observation,
                 images
             );
-
+            console.log("equisde")
             return res.status(200).json({
                 success: true,
                 message: 'Documento actualizado correctamente',
@@ -516,6 +518,8 @@ class ApplicationController {
     async updateApplicationReview(req, res) {
         try {
             const { id } = req.params;
+            console.log(req.body)
+            console.log("Tamos aqui")
             const { status, observations } = req.body;
             const adminId = req.user?.id || null; // Asumiendo que tienes autenticación
             console.log("estamos aqui")

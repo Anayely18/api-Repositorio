@@ -201,120 +201,133 @@ class ApplicationRepository {
 
     async getDocumentsWithApplicationDetails(id) {
         const query = `
-            SELECT 
-                s.id_solicitud,
-                s.tipo_solicitud,
-                s.nombres AS solicitante_nombres,
-                s.apellidos AS solicitante_apellidos,
-                s.email AS solicitante_email,
-                s.dni AS solicitante_dni,
-                s.numero_contacto,
-                s.escuela_profesional,
-                s.acepta_terminos,
-                s.formato_ajustado,
-                s.errores_leidos,
-                s.tramite_informado,
-                s.declara_verdad,
-                s.nombre_proyecto,
-                s.observaciones,
-                s.link_tesis_publicada,
-                s.estado,
-                s.tipo_financiamiento,
-                s.fecha_solicitud,
-                s.created_at AS solicitud_created_at,
-                s.updated_at AS solicitud_updated_at,
-                
-                IFNULL(
-                    (SELECT JSON_ARRAYAGG(
-                        JSON_OBJECT(
-                            'author_id', a.id_autor,
-                            'author_order', a.orden_autor,
-                            'collaborator_type', a.tipo_colaborador,
-                            'location_type', a.tipo_ubicacion,
-                            'role_type', a.tipo_rol,
-                            'role', a.rol,
-                            'first_name', a.nombres,
-                            'last_name', a.apellidos,
-                            'dni', a.dni,
-                            'orcid_url', a.url_orcid,
-                            'professional_school', a.escuela_profesional
+        SELECT 
+            s.id_solicitud,
+            s.tipo_solicitud,
+            s.nombres AS solicitante_nombres,
+            s.apellidos AS solicitante_apellidos,
+            s.email AS solicitante_email,
+            s.dni AS solicitante_dni,
+            s.numero_contacto,
+            s.escuela_profesional,
+            s.acepta_terminos,
+            s.formato_ajustado,
+            s.errores_leidos,
+            s.tramite_informado,
+            s.declara_verdad,
+            s.nombre_proyecto,
+            s.observaciones,
+            s.link_tesis_publicada,
+            s.estado,
+            s.tipo_financiamiento,
+            s.fecha_solicitud,
+            s.created_at AS solicitud_created_at,
+            s.updated_at AS solicitud_updated_at,
+            
+            IFNULL(
+                (SELECT JSON_ARRAYAGG(
+                    JSON_OBJECT(
+                        'author_id', a.id_autor,
+                        'author_order', a.orden_autor,
+                        'collaborator_type', a.tipo_colaborador,
+                        'location_type', a.tipo_ubicacion,
+                        'role_type', a.tipo_rol,
+                        'role', a.rol,
+                        'first_name', a.nombres,
+                        'last_name', a.apellidos,
+                        'dni', a.dni,
+                        'orcid_url', a.url_orcid,
+                        'professional_school', a.escuela_profesional
+                    )
+                )
+                FROM t_autores a
+                WHERE a.id_solicitud = s.id_solicitud),
+                '[]'
+            ) AS autores,
+            
+            IFNULL(
+                (SELECT JSON_ARRAYAGG(
+                    JSON_OBJECT(
+                        'advisor_id', ase.id_asesor,
+                        'advisor_order', ase.orden_asesor,
+                        'full_name', ase.apellidos_nombres,
+                        'dni', ase.dni,
+                        'orcid', ase.orcid
+                    )
+                )
+                FROM t_asesores ase
+                WHERE ase.id_solicitud = s.id_solicitud),
+                '[]'
+            ) AS asesores,
+            
+            IFNULL(
+                (SELECT JSON_ARRAYAGG(
+                    JSON_OBJECT(
+                        'jury_id', j.id_jurado,
+                        'jury_role', j.rol_jurado,
+                        'full_name', j.apellidos_nombres,
+                        'dni', j.dni,
+                        'email', j.email,
+                        'orcid', j.orcid
+                    )
+                )
+                FROM t_jurados j
+                WHERE j.id_solicitud = s.id_solicitud),
+                '[]'
+            ) AS jurados,
+            
+            IFNULL(
+                (SELECT JSON_ARRAYAGG(
+                    JSON_OBJECT(
+                        'document_id', d.id_documento,
+                        'document_type', d.tipo_documento,
+                        'file_name', d.nombre_archivo,
+                        'file_path', d.ruta_archivo,
+                        'size_kb', d.tamano_kb,
+                        'upload_date', d.fecha_subida,
+                        'status', d.estado,
+                        'rejection_reason', d.razon_rechazo,
+                        'images', IFNULL(
+                            (SELECT JSON_ARRAYAGG(
+                                JSON_OBJECT(
+                                    'image_id', di.id_imagen,
+                                    'image_path', di.ruta_imagen,
+                                    'file_name', di.nombre_archivo,
+                                    'created_at', di.created_at
+                                )
+                            )
+                            FROM t_documentos_imagenes di
+                            WHERE di.id_documento = d.id_documento),
+                            JSON_ARRAY()
                         )
                     )
-                    FROM t_autores a
-                    WHERE a.id_solicitud = s.id_solicitud),
-                    '[]'
-                ) AS autores,
-                
-                IFNULL(
-                    (SELECT JSON_ARRAYAGG(
-                        JSON_OBJECT(
-                            'advisor_id', ase.id_asesor,
-                            'advisor_order', ase.orden_asesor,
-                            'full_name', ase.apellidos_nombres,
-                            'dni', ase.dni,
-                            'orcid', ase.orcid
-                        )
+                )
+                FROM t_documentos d
+                WHERE d.id_solicitud = s.id_solicitud),
+                '[]'
+            ) AS documentos,
+            
+            IFNULL(
+                (SELECT JSON_ARRAYAGG(
+                    JSON_OBJECT(
+                        'history_id', h.id_historial,
+                        'previous_status', h.estado_anterior,
+                        'new_status', h.estado_nuevo,
+                        'comment', h.comentario,
+                        'change_date', h.fecha_cambio,
+                        'admin_name', adm.nombre_usuario
                     )
-                    FROM t_asesores ase
-                    WHERE ase.id_solicitud = s.id_solicitud),
-                    '[]'
-                ) AS asesores,
-                
-                IFNULL(
-                    (SELECT JSON_ARRAYAGG(
-                        JSON_OBJECT(
-                            'jury_id', j.id_jurado,
-                            'jury_role', j.rol_jurado,
-                            'full_name', j.apellidos_nombres,
-                            'dni', j.dni,
-                            'email', j.email,
-                            'orcid', j.orcid
-                        )
-                    )
-                    FROM t_jurados j
-                    WHERE j.id_solicitud = s.id_solicitud),
-                    '[]'
-                ) AS jurados,
-                
-                IFNULL(
-                    (SELECT JSON_ARRAYAGG(
-                        JSON_OBJECT(
-                            'document_id', d.id_documento,
-                            'document_type', d.tipo_documento,
-                            'file_name', d.nombre_archivo,
-                            'file_path', d.ruta_archivo,
-                            'size_kb', d.tamano_kb,
-                            'upload_date', d.fecha_subida,
-                            'status', d.estado,
-                            'rejection_reason', d.razon_rechazo
-                        )
-                    )
-                    FROM t_documentos d
-                    WHERE d.id_solicitud = s.id_solicitud),
-                    '[]'
-                ) AS documentos,
-                
-                IFNULL(
-                    (SELECT JSON_ARRAYAGG(
-                        JSON_OBJECT(
-                            'history_id', h.id_historial,
-                            'previous_status', h.estado_anterior,
-                            'new_status', h.estado_nuevo,
-                            'comment', h.comentario,
-                            'change_date', h.fecha_cambio,
-                            'admin_name', adm.nombre_usuario
-                        )
-                    )
-                    FROM t_historial_solicitudes h
-                    LEFT JOIN t_administradores adm ON h.id_admin = adm.id_admin
-                    WHERE h.id_solicitud = s.id_solicitud
-                    ORDER BY h.fecha_cambio DESC),
-                    '[]'
-                ) AS historial
-                
-            FROM t_solicitudes s
-            WHERE s.id_solicitud = ?
-        `;
+                )
+                FROM t_historial_solicitudes h
+                LEFT JOIN t_administradores adm ON h.id_admin = adm.id_admin
+                WHERE h.id_solicitud = s.id_solicitud
+                ORDER BY h.fecha_cambio DESC),
+                '[]'
+            ) AS historial
+            
+        FROM t_solicitudes s
+        WHERE s.id_solicitud = ?
+    `;
 
         const [rows] = await pool.execute(query, [id]);
 
@@ -336,6 +349,7 @@ class ApplicationRepository {
                 return [];
             }
         };
+
         result.autores = safeJSONParse(result.autores);
         result.asesores = safeJSONParse(result.asesores);
         result.jurados = safeJSONParse(result.jurados);
@@ -371,7 +385,6 @@ class ApplicationRepository {
             history: result.historial
         };
     }
-
     async getApplicationByDni(dni, applicationType) {
         console.log('🔍 Repository - Buscando DNI:', dni, 'Tipo:', applicationType);
 
@@ -401,7 +414,20 @@ class ApplicationRepository {
                         'file_path', d.ruta_archivo,
                         'status', d.estado,
                         'rejection_reason', d.razon_rechazo,
-                        'upload_date', d.fecha_subida
+                        'upload_date', d.fecha_subida,
+                        'images', IFNULL(
+                            (SELECT JSON_ARRAYAGG(
+                                JSON_OBJECT(
+                                    'image_id', di.id_imagen,
+                                    'image_path', di.ruta_imagen,
+                                    'file_name', di.nombre_archivo,
+                                    'created_at', di.created_at
+                                )
+                            )
+                            FROM t_documentos_imagenes di
+                            WHERE di.id_documento = d.id_documento),
+                            JSON_ARRAY()
+                        )
                     )
                 )
                 FROM t_documentos d
@@ -450,7 +476,6 @@ class ApplicationRepository {
             } else {
                 console.log('❌ No se encontraron resultados');
 
-                // Query de verificación para ver qué hay en la BD
                 const checkQuery = `
                 SELECT dni, tipo_solicitud, nombres, apellidos 
                 FROM t_solicitudes 
@@ -483,6 +508,7 @@ class ApplicationRepository {
             result.documentos = safeJSONParse(result.documentos);
             result.historial = safeJSONParse(result.historial);
 
+            // 🔧 CAMBIO CLAVE: Mapear las rutas de las imágenes correctamente
             const formattedResult = {
                 application_id: result.id_solicitud,
                 application_type: result.tipo_solicitud,
@@ -502,7 +528,29 @@ class ApplicationRepository {
                     name: doc.document_type,
                     status: doc.status,
                     observation: doc.rejection_reason,
-                    images: []
+                    // 📸 AQUÍ ESTÁ EL CAMBIO: Mapear correctamente las rutas de las imágenes
+                    images: (doc.images || []).map(img => {
+                        // Asegurarse de que la ruta sea accesible desde el frontend
+                        // Ajusta esto según tu configuración de servidor
+                        const imagePath = img.image_path;
+
+                        // Si la ruta ya incluye el dominio completo, úsala tal cual
+                        if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
+                            return imagePath;
+                        }
+
+                        // Si es una ruta relativa, construir la URL completa
+                        // Ajusta 'http://localhost:3000' a tu URL de backend
+                        const baseUrl = process.env.API_BASE_URL || 'http://localhost:3000';
+
+                        // Si la ruta ya comienza con /, úsala directamente
+                        if (imagePath.startsWith('/')) {
+                            return `${baseUrl}${imagePath}`;
+                        }
+
+                        // Si no, agregar / al inicio
+                        return `${baseUrl}/${imagePath}`;
+                    })
                 })),
                 timeline: result.historial.map(h => ({
                     date: h.change_date,
@@ -512,6 +560,20 @@ class ApplicationRepository {
             };
 
             console.log('✅ Datos formateados correctamente');
+            console.log('📸 Total de documentos con imágenes:',
+                formattedResult.documents.filter(doc => doc.images.length > 0).length
+            );
+
+            // Log detallado de las imágenes mapeadas
+            formattedResult.documents.forEach((doc, idx) => {
+                if (doc.images.length > 0) {
+                    console.log(`📷 Documento ${idx + 1} (${doc.name}): ${doc.images.length} imágenes`);
+                    doc.images.forEach((img, imgIdx) => {
+                        console.log(`   Imagen ${imgIdx + 1}: ${img}`);
+                    });
+                }
+            });
+
             return formattedResult;
 
         } catch (error) {
@@ -519,7 +581,6 @@ class ApplicationRepository {
             throw error;
         }
     }
-
     // En applicationRepository.js
 
     async updateDocumentStatus(documentId, status, rejectionReason = null, images = []) {
