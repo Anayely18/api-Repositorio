@@ -485,7 +485,7 @@ class ApplicationController {
             const { status, observation } = req.body;
             const images = req.files || [];
 
-            if (!['validado', 'rechazado', 'requiere_correccion'].includes(status)) {
+            if (!['aprobado', 'observado', 'requiere_correccion','publicado'].includes(status)) {
                 return res.status(400).json({
                     success: false,
                     message: 'Estado inválido'
@@ -523,7 +523,7 @@ class ApplicationController {
             const { status, observations } = req.body;
             const adminId = req.user?.id || null; // Asumiendo que tienes autenticación
             console.log("estamos aqui")
-            if (!['pendiente', 'en_revision', 'aprobado', 'rechazado', 'requiere_correccion'].includes(status)) {
+            if (!['pendiente', 'en_revision', 'aprobado', 'observado', 'requiere_correccion','publicado'].includes(status)) {
                 return res.status(400).json({
                     success: false,
                     message: 'Estado inválido'

@@ -52,8 +52,8 @@ class ApplicationService {
             if (applicationType === 'estudiante' && dni.length !== 8) {
                 throw new Error('DNI de estudiante debe tener 8 dígitos');
             }
-            if (applicationType === 'docente' && dni.length !== 6) {
-                throw new Error('Código de docente debe tener 6 dígitos');
+            if (applicationType === 'docente' && dni.length !== 8) {
+                throw new Error('DNI de docente debe tener 8 dígitos');
             }
 
             const application = await applicationRepository.getApplicationByDni(dni, applicationType);
