@@ -402,6 +402,7 @@ class ApplicationRepository {
             s.observaciones,
             s.estado,
             s.fecha_solicitud,
+            s.link_tesis_publicada,
             s.created_at AS solicitud_created_at,
             s.updated_at AS solicitud_updated_at,
             
@@ -507,7 +508,7 @@ class ApplicationRepository {
 
             result.documentos = safeJSONParse(result.documentos);
             result.historial = safeJSONParse(result.historial);
-
+            console.log('🔗 Link tesis publicada desde BD:', result.link_tesis_publicada);
             // 🔧 CAMBIO CLAVE: Mapear las rutas de las imágenes correctamente
             const formattedResult = {
                 application_id: result.id_solicitud,

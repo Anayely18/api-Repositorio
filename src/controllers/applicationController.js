@@ -465,10 +465,7 @@ class ApplicationController {
 
             return res.status(200).json({
                 success: true,
-                data: {
-                    ...application,
-                    publication_link: application.published_thesis_link // 👈 este campo SÍ existe
-                }
+                data: application
             });
 
         } catch (error) {
