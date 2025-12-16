@@ -4,6 +4,8 @@ import advisorService from '../services/advisorService.js';
 import juryService from '../services/juryService.js';
 import documentService from '../services/documentService.js';
 import { formatApplicationData } from '../utils/formatApplication.js';
+
+
 class ApplicationController {
 
     async createApplication(req, res) {
@@ -108,7 +110,7 @@ class ApplicationController {
                     }
                 }
             }
-            
+
             const documentTypes = {
                 authorization: 'hoja_autorizacion',
                 certificate: 'constancia_empastado',
@@ -463,7 +465,10 @@ class ApplicationController {
 
             return res.status(200).json({
                 success: true,
-                data: application
+                data: {
+                    ...application,
+                    publication_link: application.published_thesis_link // 👈 este campo SÍ existe
+                }
             });
 
         } catch (error) {
@@ -481,11 +486,11 @@ class ApplicationController {
     async updateDocumentReview(req, res) {
         try {
             const { documentId } = req.params;
-            
+
             const { status, observation } = req.body;
             const images = req.files || [];
 
-            if (!['aprobado', 'observado', 'requiere_correccion','publicado'].includes(status)) {
+            if (!['aprobado', 'observado', 'requiere_correccion', 'publicado'].includes(status)) {
                 return res.status(400).json({
                     success: false,
                     message: 'Estado inválido'
@@ -523,7 +528,7 @@ class ApplicationController {
             const { status, observations } = req.body;
             const adminId = req.user?.id || null; // Asumiendo que tienes autenticación
             console.log("estamos aqui")
-            if (!['pendiente', 'en_revision', 'aprobado', 'observado', 'requiere_correccion','publicado'].includes(status)) {
+            if (!['pendiente', 'en_revision', 'aprobado', 'observado', 'requiere_correccion', 'publicado'].includes(status)) {
                 return res.status(400).json({
                     success: false,
                     message: 'Estado inválido'
@@ -585,6 +590,36 @@ class ApplicationController {
             });
         }
     }
+
+    async savePublicationLink(req, res) {
+        try {
+            const { id } = req.params;
+            const { publicationLink } = req.body;
+
+            if (!publicationLink) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'El enlace de publicación es requerido'
+                });
+            }
+
+            const result = await applicationService.savePublicationLink(id, publicationLink);
+
+            return res.status(200).json({
+                success: true,
+                message: 'Enlace de publicación guardado exitosamente',
+                data: result
+            });
+
+        } catch (error) {
+            console.error('Error al guardar enlace de publicación:', error);
+            return res.status(500).json({
+                success: false,
+                message: 'Error interno al guardar enlace de publicación'
+            });
+        }
+    }
+
 }
 
 export default new ApplicationController();

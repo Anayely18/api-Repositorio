@@ -524,6 +524,7 @@ class ApplicationRepository {
                 observations: result.observaciones,
                 status: result.estado,
                 created_at: result.fecha_solicitud,
+                publication_link: result.link_tesis_publicada,
                 documents: result.documentos.map(doc => ({
                     name: doc.document_type,
                     status: doc.status,
@@ -706,6 +707,45 @@ class ApplicationRepository {
 
         return { success: true };
     }
+
+     async savePublicationLink(applicationId, publicationLink) {
+        const connection = await pool.getConnection();
+        try {
+            new URL(publicationLink); // Validar que sea una URL válida
+            await connection.beginTransaction();
+
+            await connection.query(
+                `UPDATE t_solicitudes 
+                 SET link_tesis_publicada = ?, 
+                     estado = 'publicado',
+                     updated_at = NOW()
+                 WHERE id_solicitud = ?`,
+                [publicationLink, applicationId]
+            );
+
+            const idHistorial = uuidv4();
+            await connection.query(
+                `INSERT INTO t_historial_solicitudes 
+                 (id_historial, id_solicitud, estado_anterior, estado_nuevo, comentario, fecha_cambio)
+                 SELECT ?, ?, estado, 'publicado', ?, NOW()
+                 FROM t_solicitudes 
+                 WHERE id_solicitud = ?`,
+                [idHistorial, applicationId, `Documento publicado: ${publicationLink}`, applicationId]
+            );
+
+            await connection.commit();
+            return { success: true, publicationLink };
+        } catch (error) {
+            await connection.rollback();
+            console.error('Error en savePublicationLink (repository):', error);
+            throw error;
+        } finally {
+            connection.release();
+        }
+    }
+
 }
+
+
 
 export default new ApplicationRepository();
