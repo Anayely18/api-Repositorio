@@ -144,6 +144,19 @@ class ApplicationService {
             throw error;
         }
     }*/
+
+        async savePublicationLink(applicationId, publicationLink) {
+        try {
+            const result = await applicationRepository.savePublicationLink(applicationId, publicationLink);
+            return result;
+        } catch (error) {
+            console.error('Error en savePublicationLink (service):', error);
+            throw error;
+        }
+    }
+
 }
+
+
 
 export default new ApplicationService();

@@ -144,4 +144,7 @@ router.patch('/:applicationId/documents/bulk-update', applicationController.bulk
 
 // Consulta por DNI (ya existe)
 router.get('/search', applicationController.getApplicationByDni);
+
+router.post('/:id/publication-link', applicationController.savePublicationLink);
+
 export default router;
