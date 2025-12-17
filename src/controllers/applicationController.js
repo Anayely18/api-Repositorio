@@ -483,11 +483,11 @@ class ApplicationController {
     async updateDocumentReview(req, res) {
         try {
             const { documentId } = req.params;
-
+            console.log("estasdasdasdasdamos")
             const { status, observation } = req.body;
             const images = req.files || [];
 
-            if (!['aprobado', 'observado', 'requiere_correccion', 'publicado'].includes(status)) {
+            if (!['pendiente', 'validado', 'rechazado'].includes(status)) {
                 return res.status(400).json({
                     success: false,
                     message: 'Estado inválido'
@@ -559,7 +559,7 @@ class ApplicationController {
         try {
             const { applicationId } = req.params;
             const { documents } = req.body;
-
+            console.log("estamos aqui")
             if (!Array.isArray(documents) || documents.length === 0) {
                 return res.status(400).json({
                     success: false,
