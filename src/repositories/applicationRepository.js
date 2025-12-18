@@ -428,6 +428,20 @@ class ApplicationRepository {
                             FROM t_documentos_imagenes di
                             WHERE di.id_documento = d.id_documento),
                             JSON_ARRAY()
+                        ),
+                        'rejection_history', IFNULL(
+                            (SELECT JSON_ARRAYAGG(
+                                JSON_OBJECT(
+                                    'history_id', hr.id_historial,
+                                    'status', hr.estado,
+                                    'rejection_reason', hr.razon_rechazo,
+                                    'rejected_at', hr.fecha_registro
+                                )
+                            )
+                            FROM t_historial_rechazos hr
+                            WHERE hr.id_documento = d.id_documento
+                            ORDER BY hr.fecha_registro DESC),
+                            JSON_ARRAY()
                         )
                     )
                 )
@@ -509,7 +523,7 @@ class ApplicationRepository {
             result.documentos = safeJSONParse(result.documentos);
             result.historial = safeJSONParse(result.historial);
             console.log('🔗 Link tesis publicada desde BD:', result.link_tesis_publicada);
-            // 🔧 CAMBIO CLAVE: Mapear las rutas de las imágenes correctamente
+
             const formattedResult = {
                 application_id: result.id_solicitud,
                 application_type: result.tipo_solicitud,
@@ -529,30 +543,28 @@ class ApplicationRepository {
                 documents: result.documentos.map(doc => ({
                     name: doc.document_type,
                     status: doc.status,
-                    observation: doc.rejection_reason,
-                    // 📸 AQUÍ ESTÁ EL CAMBIO: Mapear correctamente las rutas de las imágenes
+                    observation: doc.rejection_reason, // Razón más reciente (para compatibilidad)
                     images: (doc.images || []).map(img => {
-                        // Asegurarse de que la ruta sea accesible desde el frontend
-                        // Ajusta esto según tu configuración de servidor
                         const imagePath = img.image_path;
 
-                        // Si la ruta ya incluye el dominio completo, úsala tal cual
                         if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
                             return imagePath;
                         }
 
-                        // Si es una ruta relativa, construir la URL completa
-                        // Ajusta 'http://localhost:3000' a tu URL de backend
                         const baseUrl = process.env.API_BASE_URL || 'http://localhost:3000';
 
-                        // Si la ruta ya comienza con /, úsala directamente
                         if (imagePath.startsWith('/')) {
                             return `${baseUrl}${imagePath}`;
                         }
 
-                        // Si no, agregar / al inicio
                         return `${baseUrl}/${imagePath}`;
-                    })
+                    }),
+                    // 🆕 HISTORIAL DE RECHAZOS
+                    rejection_history: (doc.rejection_history || []).map(rejection => ({
+                        reason: rejection.rejection_reason,
+                        rejected_at: rejection.rejected_at,
+                        status: rejection.status
+                    }))
                 })),
                 timeline: result.historial.map(h => ({
                     date: h.change_date,
@@ -565,13 +577,22 @@ class ApplicationRepository {
             console.log('📸 Total de documentos con imágenes:',
                 formattedResult.documents.filter(doc => doc.images.length > 0).length
             );
+            console.log('📝 Total de documentos con historial de rechazos:',
+                formattedResult.documents.filter(doc => doc.rejection_history.length > 0).length
+            );
 
-            // Log detallado de las imágenes mapeadas
+            // Log detallado de las imágenes y rechazos
             formattedResult.documents.forEach((doc, idx) => {
                 if (doc.images.length > 0) {
                     console.log(`📷 Documento ${idx + 1} (${doc.name}): ${doc.images.length} imágenes`);
                     doc.images.forEach((img, imgIdx) => {
                         console.log(`   Imagen ${imgIdx + 1}: ${img}`);
+                    });
+                }
+                if (doc.rejection_history.length > 0) {
+                    console.log(`📝 Documento ${idx + 1} (${doc.name}): ${doc.rejection_history.length} rechazos`);
+                    doc.rejection_history.forEach((rej, rejIdx) => {
+                        console.log(`   Rechazo ${rejIdx + 1}: ${rej.reason} (${rej.rejected_at})`);
                     });
                 }
             });
@@ -586,25 +607,62 @@ class ApplicationRepository {
     // En applicationRepository.js
 
     async updateDocumentStatus(documentId, status, rejectionReason = null, images = []) {
-        const query = `
-        UPDATE t_documentos 
-        SET 
-            estado = ?,
-            razon_rechazo = ?,
-            updated_at = NOW()
-        WHERE id_documento = ?
-    `;
+        const connection = await pool.getConnection();
 
-        await pool.execute(query, [status, rejectionReason, documentId]);
+        try {
+            await connection.beginTransaction();
 
-        // Si hay imágenes, guardarlas en una tabla relacionada
-        if (images && images.length > 0) {
-            await this.saveDocumentImages(documentId, images);
+            // Actualizar el documento (mantiene el campo razon_rechazo para compatibilidad)
+            const query = `
+            UPDATE t_documentos 
+            SET 
+                estado = ?,
+                razon_rechazo = ?,
+                updated_at = NOW()
+            WHERE id_documento = ?
+        `;
+            await connection.execute(query, [status, rejectionReason, documentId]);
+
+            // Si el estado es 'rechazado' y hay una razón, guardar en historial
+            if (status === 'rechazado' && rejectionReason) {
+                const historialQuery = `
+                INSERT INTO t_historial_rechazos (id_documento, estado, razon_rechazo)
+                VALUES (?, ?, ?)
+            `;
+                await connection.execute(historialQuery, [documentId, status, rejectionReason]);
+            }
+
+            // Si hay imágenes, guardarlas en una tabla relacionada
+            if (images && images.length > 0) {
+                await this.saveDocumentImages(documentId, images, connection);
+            }
+
+            await connection.commit();
+            return { success: true };
+        } catch (error) {
+            await connection.rollback();
+            throw error;
+        } finally {
+            connection.release();
         }
-
-        return { success: true };
     }
 
+    // Método adicional para obtener el historial de rechazos de un documento
+    async getDocumentRejectionHistory(documentId) {
+        const query = `
+        SELECT 
+            id_historial,
+            estado,
+            razon_rechazo,
+            fecha_registro
+        FROM t_historial_rechazos
+        WHERE id_documento = ?
+        ORDER BY fecha_registro DESC
+    `;
+
+        const [rows] = await pool.execute(query, [documentId]);
+        return rows;
+    }
     async saveDocumentImages(documentId, images) {
         // Crear tabla si no existe
         const createTableQuery = `
@@ -709,7 +767,7 @@ class ApplicationRepository {
         return { success: true };
     }
 
-     async savePublicationLink(applicationId, publicationLink) {
+    async savePublicationLink(applicationId, publicationLink) {
         const connection = await pool.getConnection();
         try {
             new URL(publicationLink); // Validar que sea una URL válida
