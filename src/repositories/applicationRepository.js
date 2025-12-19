@@ -458,11 +458,13 @@ class ApplicationRepository {
                         'new_status', h.estado_nuevo,
                         'comment', h.comentario,
                         'change_date', h.fecha_cambio,
-                        'admin_name', adm.nombre_usuario
+                        'admin_name', adm.nombre_usuario,
+                        'document_type', d.tipo_documento
                     )
                 )
                 FROM t_historial_solicitudes h
                 LEFT JOIN t_administradores adm ON h.id_admin = adm.id_admin
+                LEFT JOIN t_documentos d ON h.id_documento = d.id_documento
                 WHERE h.id_solicitud = s.id_solicitud
                 ORDER BY h.fecha_cambio DESC),
                 '[]'
@@ -543,7 +545,7 @@ class ApplicationRepository {
                 documents: result.documentos.map(doc => ({
                     name: doc.document_type,
                     status: doc.status,
-                    observation: doc.rejection_reason, // Razón más reciente (para compatibilidad)
+                    observation: doc.rejection_reason,
                     images: (doc.images || []).map(img => {
                         const imagePath = img.image_path;
 
@@ -559,18 +561,47 @@ class ApplicationRepository {
 
                         return `${baseUrl}/${imagePath}`;
                     }),
-                    // 🆕 HISTORIAL DE RECHAZOS
                     rejection_history: (doc.rejection_history || []).map(rejection => ({
                         reason: rejection.rejection_reason,
                         rejected_at: rejection.rejected_at,
                         status: rejection.status
                     }))
                 })),
-                timeline: result.historial.map(h => ({
-                    date: h.change_date,
-                    status: h.new_status,
-                    description: h.comment || 'Cambio de estado'
-                }))
+                timeline: result.historial.map(h => {
+                    const historialDate = new Date(h.change_date);
+                    const relatedImages = [];
+
+                    // Buscar imágenes subidas cerca de esta fecha (±10 minutos)
+                    result.documentos.forEach(doc => {
+                        if (doc.images && doc.images.length > 0) {
+                            doc.images.forEach(img => {
+                                const imgDate = new Date(img.created_at);
+                                const diffMinutes = Math.abs(imgDate - historialDate) / (1000 * 60);
+
+                                if (diffMinutes <= 10) {
+                                    const imagePath = img.image_path;
+                                    const baseUrl = process.env.API_BASE_URL || 'http://localhost:3000';
+
+                                    if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
+                                        relatedImages.push(imagePath);
+                                    } else if (imagePath.startsWith('/')) {
+                                        relatedImages.push(`${baseUrl}${imagePath}`);
+                                    } else {
+                                        relatedImages.push(`${baseUrl}/${imagePath}`);
+                                    }
+                                }
+                            });
+                        }
+                    });
+
+                    return {
+                        date: h.change_date,
+                        status: h.new_status,
+                        document_type: h.document_type,
+                        description: h.comment || 'Cambio de estado',
+                        images: relatedImages
+                    };
+                })
             };
 
             console.log('✅ Datos formateados correctamente');
@@ -612,7 +643,21 @@ class ApplicationRepository {
         try {
             await connection.beginTransaction();
 
-            // Actualizar el documento (mantiene el campo razon_rechazo para compatibilidad)
+            // Obtener información del documento y la solicitud
+            const [docInfo] = await connection.execute(
+                `SELECT id_solicitud, tipo_documento, estado as estado_anterior 
+             FROM t_documentos 
+             WHERE id_documento = ?`,
+                [documentId]
+            );
+
+            if (docInfo.length === 0) {
+                throw new Error('Documento no encontrado');
+            }
+
+            const { id_solicitud, tipo_documento, estado_anterior } = docInfo[0];
+
+            // Actualizar el documento
             const query = `
             UPDATE t_documentos 
             SET 
@@ -623,7 +668,20 @@ class ApplicationRepository {
         `;
             await connection.execute(query, [status, rejectionReason, documentId]);
 
-            // Si el estado es 'rechazado' y hay una razón, guardar en historial
+            // 🆕 REGISTRAR EN HISTORIAL DE SOLICITUDES CON id_documento
+            const idHistorial = uuidv4();
+            const comentario = rejectionReason
+                ? `${tipo_documento} - ${status}: ${rejectionReason}`
+                : `${tipo_documento} - ${status}`;
+
+            await connection.execute(
+                `INSERT INTO t_historial_solicitudes 
+            (id_historial, id_solicitud, id_documento, estado_anterior, estado_nuevo, comentario, fecha_cambio)
+            VALUES (?, ?, ?, ?, ?, ?, NOW())`,
+                [idHistorial, id_solicitud, documentId, estado_anterior, status, comentario]
+            );
+
+            // Registrar en historial de rechazos si aplica
             if (status === 'rechazado' && rejectionReason) {
                 const historialQuery = `
                 INSERT INTO t_historial_rechazos (id_documento, estado, razon_rechazo)
@@ -632,21 +690,22 @@ class ApplicationRepository {
                 await connection.execute(historialQuery, [documentId, status, rejectionReason]);
             }
 
-            // Si hay imágenes, guardarlas en una tabla relacionada
+            // Guardar imágenes si hay
+            let imageIds = [];
             if (images && images.length > 0) {
-                await this.saveDocumentImages(documentId, images, connection);
+                imageIds = await this.saveDocumentImages(documentId, images, connection);
             }
 
             await connection.commit();
             return { success: true };
         } catch (error) {
             await connection.rollback();
+            console.error('Error en updateDocumentStatus:', error);
             throw error;
         } finally {
             connection.release();
         }
     }
-
     // Método adicional para obtener el historial de rechazos de un documento
     async getDocumentRejectionHistory(documentId) {
         const query = `
@@ -663,8 +722,8 @@ class ApplicationRepository {
         const [rows] = await pool.execute(query, [documentId]);
         return rows;
     }
-    async saveDocumentImages(documentId, images) {
-        // Crear tabla si no existe
+    async saveDocumentImages(documentId, images, connection) {
+        // Crear tabla si no existe - USAR CONNECTION
         const createTableQuery = `
         CREATE TABLE IF NOT EXISTS t_documentos_imagenes (
             id_imagen INT AUTO_INCREMENT PRIMARY KEY,
@@ -676,7 +735,7 @@ class ApplicationRepository {
         )
     `;
 
-        await pool.execute(createTableQuery);
+        await connection.execute(createTableQuery); // ✅ Usar connection, no pool
 
         // Insertar imágenes
         const insertQuery = `
@@ -684,13 +743,17 @@ class ApplicationRepository {
         VALUES (?, ?, ?)
     `;
 
+        const imageIds = [];
         for (const image of images) {
-            await pool.execute(insertQuery, [
+            const [result] = await connection.execute(insertQuery, [ // ✅ Usar connection, no pool
                 documentId,
                 image.path,
                 image.filename
             ]);
+            imageIds.push(result.insertId);
         }
+
+        return imageIds;
     }
 
     async getDocumentImages(documentId) {
@@ -705,7 +768,7 @@ class ApplicationRepository {
         ORDER BY created_at DESC
     `;
 
-        const [rows] = await pool.execute(query, [documentId]);
+        const [rows] = await pool.execute(query, [documentId]); // ✅ Aquí sí usar pool porque no está en transacción
         return rows;
     }
 
