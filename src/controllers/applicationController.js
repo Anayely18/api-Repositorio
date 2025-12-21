@@ -4,6 +4,8 @@ import advisorService from '../services/advisorService.js';
 import juryService from '../services/juryService.js';
 import documentService from '../services/documentService.js';
 import { formatApplicationData } from '../utils/formatApplication.js';
+
+
 class ApplicationController {
 
     async createApplication(req, res) {
@@ -108,6 +110,7 @@ class ApplicationController {
                     }
                 }
             }
+
             const documentTypes = {
                 authorization: 'hoja_autorizacion',
                 certificate: 'constancia_empastado',
@@ -419,6 +422,201 @@ class ApplicationController {
             });
         }
     }
+
+    async getApplicationByDni(req, res) {
+        try {
+            const { dni, type } = req.query;
+
+            if (!dni) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'El DNI es requerido'
+                });
+            }
+
+            if (!type || !['estudiante', 'docente'].includes(type)) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'El tipo de solicitud debe ser "estudiante" o "docente"'
+                });
+            }
+
+            if (type === 'estudiante' && dni.length !== 8) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'El DNI de estudiante debe tener 8 dígitos'
+                });
+            }
+
+            if (type === 'docente' && dni.length !== 6) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'El código de docente debe tener 6 dígitos'
+                });
+            }
+            const application = await applicationService.getApplicationByDni(dni, type);
+            console.log(dni, type);
+            if (!application) {
+                return res.status(404).json({
+                    success: false,
+                    message: 'No se encontró ningún trámite con ese DNI/códigos'
+                });
+            }
+
+            return res.status(200).json({
+                success: true,
+                data: application
+            });
+
+        } catch (error) {
+            console.error('Error en getApplicationByDni controller:', error);
+            return res.status(500).json({
+                success: false,
+                message: 'Error al buscar el trámite',
+                error: process.env.NODE_ENV === 'development' ? error.message : undefined
+            });
+        }
+    }
+
+    // En applicationController.js
+
+    async updateDocumentReview(req, res) {
+        try {
+            const { documentId } = req.params;
+            console.log("estasdasdasdasdamos")
+            const { status, observation } = req.body;
+            const images = req.files || [];
+
+            if (!['pendiente', 'validado', 'rechazado'].includes(status)) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Estado inválido'
+                });
+            }
+
+            const result = await applicationService.updateDocumentReview(
+                documentId,
+                status,
+                observation,
+                images
+            );
+            console.log("equisde")
+            return res.status(200).json({
+                success: true,
+                message: 'Documento actualizado correctamente',
+                data: result
+            });
+
+        } catch (error) {
+            console.error('Error al actualizar documento:', error);
+            return res.status(500).json({
+                success: false,
+                message: 'Error al actualizar el documento',
+                error: process.env.NODE_ENV === 'development' ? error.message : undefined
+            });
+        }
+    }
+
+    async updateApplicationReview(req, res) {
+        try {
+            const { id } = req.params;
+            console.log(req.body)
+            console.log("Tamos aqui")
+            const { status, observations } = req.body;
+            const adminId = req.user?.id || null; // Asumiendo que tienes autenticación
+            console.log("estamos aqui")
+            if (!['pendiente', 'en_revision', 'aprobado', 'observado', 'requiere_correccion', 'publicado'].includes(status)) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Estado inválido'
+                });
+            }
+
+            const result = await applicationService.updateApplicationReview(
+                id,
+                status,
+                observations,
+                adminId
+            );
+
+            return res.status(200).json({
+                success: true,
+                message: 'Solicitud actualizada correctamente',
+                data: result
+            });
+
+        } catch (error) {
+            console.error('Error al actualizar solicitud:', error);
+            return res.status(500).json({
+                success: false,
+                message: 'Error al actualizar la solicitud',
+                error: process.env.NODE_ENV === 'development' ? error.message : undefined
+            });
+        }
+    }
+
+    async bulkUpdateDocuments(req, res) {
+        try {
+            const { applicationId } = req.params;
+            const { documents } = req.body;
+            console.log("estamos aqui")
+            if (!Array.isArray(documents) || documents.length === 0) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Debe proporcionar al menos un documento para actualizar'
+                });
+            }
+
+            const result = await applicationService.bulkUpdateDocuments(
+                applicationId,
+                documents
+            );
+
+            return res.status(200).json({
+                success: true,
+                message: 'Documentos actualizados correctamente',
+                data: result
+            });
+
+        } catch (error) {
+            console.error('Error al actualizar documentos:', error);
+            return res.status(500).json({
+                success: false,
+                message: 'Error al actualizar los documentos',
+                error: process.env.NODE_ENV === 'development' ? error.message : undefined
+            });
+        }
+    }
+
+    async savePublicationLink(req, res) {
+        try {
+            const { id } = req.params;
+            const { publicationLink } = req.body;
+
+            if (!publicationLink) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'El enlace de publicación es requerido'
+                });
+            }
+
+            const result = await applicationService.savePublicationLink(id, publicationLink);
+
+            return res.status(200).json({
+                success: true,
+                message: 'Enlace de publicación guardado exitosamente',
+                data: result
+            });
+
+        } catch (error) {
+            console.error('Error al guardar enlace de publicación:', error);
+            return res.status(500).json({
+                success: false,
+                message: 'Error interno al guardar enlace de publicación'
+            });
+        }
+    }
+
 }
 
 export default new ApplicationController();

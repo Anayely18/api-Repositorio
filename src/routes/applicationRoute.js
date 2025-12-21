@@ -87,6 +87,29 @@ const parseFormData = (req, res, next) => {
     }
 };
 
+const uploads = multer({
+    storage,
+    limits: { fileSize: 10 * 1024 * 1024 },
+    fileFilter: (req, file, cb) => {
+        if (file.mimetype === 'application/pdf') cb(null, true);
+        else cb(new Error('Solo se permiten archivos PDF'), false);
+    }
+});
+
+// Nuevo upload para imágenes
+const uploadImages = multer({
+    storage,
+    limits: { fileSize: 10 * 1024 * 1024 },
+    fileFilter: (req, file, cb) => {
+        const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+        if (allowedTypes.includes(file.mimetype)) {
+            cb(null, true);
+        } else {
+            cb(new Error('Solo se permiten archivos de imagen (JPEG, PNG, GIF, WEBP)'), false);
+        }
+    }
+});
+
 router.post(
     '/students',
     uploadFieldsStudent,
@@ -102,13 +125,26 @@ router.post(
 );
 
 router.get(
-    '/list',
-    (req, res) => applicationController.getApplications(req, res)
+    '/list', applicationController.getApplications
 );
 
 router.get(
     '/details/:id',
     (req, res) => applicationController.getTeacherApplicationDetails(req, res)
 );
+
+router.get('/search', applicationController.getApplicationByDni);
+
+router.patch('/documents/:documentId/review', uploadImages.array('images', 10), applicationController.updateDocumentReview);
+
+// Actualizar estado de la solicitud completa
+router.patch('/:id/review', applicationController.updateApplicationReview);
+// Actualizar múltiples documentos a la vez
+router.patch('/:applicationId/documents/bulk-update', applicationController.bulkUpdateDocuments);
+
+// Consulta por DNI (ya existe)
+router.get('/search', applicationController.getApplicationByDni);
+
+router.post('/:id/publication-link', applicationController.savePublicationLink);
 
 export default router;

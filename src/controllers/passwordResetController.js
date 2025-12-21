@@ -50,7 +50,7 @@ class PasswordResetController {
     async verifyCode(req, res) {
         try {
             const { email, code } = req.body;
-
+            console.log("Backend recibió:", { email, code });
             if (!email || !code) {
                 return res.status(400).json({
                     success: false,
