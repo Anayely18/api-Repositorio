@@ -1,9 +1,8 @@
 import pool from "../config/database.js";
 import Application from "../models/Application.js";
 import { v4 as uuidv4 } from "uuid";
+import { mapApiStatusToDb, mapDbStatusToApi } from "../utils/statusMapper.js";
 
-const mapApiStatusToDb = (status) => (status === "observado ");
-const mapDbStatusToApi = (status) => (status === "observado");
 
 class ApplicationRepository {
 
@@ -108,10 +107,10 @@ class ApplicationRepository {
         const normalizedStatus = status ? mapApiStatusToDb(status) : null;
 
         if (normalizedStatus) {
-            conditions.push('s.estado = ?');
+            conditions.push("s.estado = ?");
             params.push(normalizedStatus);
-            params.push(status);
         }
+
 
         if (search) {
             conditions.push(`(
@@ -673,6 +672,9 @@ class ApplicationRepository {
             await connection.beginTransaction();
             const normalizedStatus = mapApiStatusToDb(status);
 
+            if (!["pendiente", "aprobado", "observado"].includes(normalizedStatus)) {
+                throw new Error(`Estado inválido para DB: ${normalizedStatus}`);
+            }
             // Obtener información del documento y la solicitud
             const [docInfo] = await connection.execute(
                 `SELECT id_solicitud, tipo_documento, estado as estado_anterior 
@@ -803,47 +805,48 @@ class ApplicationRepository {
     }
 
     async updateApplicationStatus(applicationId, newStatus, comment = null, adminId = null) {
-        // Actualizar estado de la solicitud
-        const updateQuery = `
-        UPDATE t_solicitudes 
-        SET 
-            estado = ?,
-            observaciones = ?,
-            updated_at = NOW()
-        WHERE id_solicitud = ?
-    `;
+        const connection = await pool.getConnection();
+        try {
+            await connection.beginTransaction();
 
-        await pool.execute(updateQuery, [normalizedStatus, comment, applicationId]);
+            const normalizedStatus = mapApiStatusToDb(newStatus);
 
-        const idHistory = uuidv4();
-        const historyQuery = `
-    INSERT INTO t_historial_solicitudes 
-    (id_historial, id_solicitud, estado_anterior, estado_nuevo, comentario, id_admin, fecha_cambio)
-    SELECT 
-        ?,        -- id_historial
-        ?,        -- id_solicitud
-        estado,   -- estado_anterior
-        ?,        -- estado_nuevo
-        ?,        -- comentario
-        ?,        -- id_admin
-        NOW()
-    FROM t_solicitudes 
-    WHERE id_solicitud = ?
-    LIMIT 1
-`;
+            // leer estado anterior
+            const [prev] = await connection.execute(
+                "SELECT estado FROM t_solicitudes WHERE id_solicitud = ? LIMIT 1",
+                [applicationId]
+            );
+            if (prev.length === 0) throw new Error("Solicitud no encontrada");
 
+            const previousStatus = prev[0].estado;
 
-        await pool.execute(historyQuery, [
-            idHistory,
-            applicationId,
-            normalizedStatus,
-            comment,
-            adminId,
-            applicationId
-        ]);
+            // actualizar solicitud
+            await connection.execute(
+                `UPDATE t_solicitudes
+       SET estado = ?, observaciones = ?, updated_at = NOW()
+       WHERE id_solicitud = ?`,
+                [normalizedStatus, comment, applicationId]
+            );
 
-        return { success: true };
+            // insertar historial (id_documento NULL)
+            const idHistory = uuidv4();
+            await connection.execute(
+                `INSERT INTO t_historial_solicitudes
+       (id_historial, id_solicitud, id_documento, estado_anterior, estado_nuevo, comentario, id_admin, fecha_cambio)
+       VALUES (?, ?, NULL, ?, ?, ?, ?, NOW())`,
+                [idHistory, applicationId, previousStatus, normalizedStatus, comment, adminId]
+            );
+
+            await connection.commit();
+            return { success: true };
+        } catch (e) {
+            await connection.rollback();
+            throw e;
+        } finally {
+            connection.release();
+        }
     }
+
 
     async bulkUpdateDocuments(applicationId, documentUpdates) {
         // documentUpdates es un array de { documentId, status, observation, images }

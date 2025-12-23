@@ -1,18 +1,31 @@
-export const mapDbStatusToApi = (dbStatus) => {
-  const s = String(dbStatus ?? '').toLowerCase();
+export const mapApiStatusToDb = (apiStatus) => {
+  const s = String(apiStatus ?? '').trim().toLowerCase();
 
   const map = {
     pendiente: 'pendiente',
-    en_revision: 'en_revision',
     aprobado: 'aprobado',
     observado: 'observado',
-    requiere_correccion: 'requiere_correccion',
-    publicado: 'publicado',
 
-    // compatibilidad
+    // legacy (por si aún llegan)
+    validado: 'aprobado',
     rechazado: 'observado',
-    validado: 'aprobado'
   };
 
-  return map[s] || s;
+  return map[s] || 'pendiente';
+};
+
+export const mapDbStatusToApi = (dbStatus) => {
+  const s = String(dbStatus ?? '').trim().toLowerCase();
+
+  const map = {
+    pendiente: 'pendiente',
+    aprobado: 'aprobado',
+    observado: 'observado',
+
+    // legacy
+    validado: 'aprobado',
+    rechazado: 'observado',
+  };
+
+  return map[s] || 'pendiente';
 };
