@@ -1,6 +1,10 @@
 import pool from "../config/database.js";
 import Application from "../models/Application.js";
 import { v4 as uuidv4 } from "uuid";
+
+const mapApiStatusToDb = (status) => (status === "observado ");
+const mapDbStatusToApi = (status) => (status === "observado");
+
 class ApplicationRepository {
 
     async create(
@@ -100,8 +104,12 @@ class ApplicationRepository {
         const conditions = [`s.tipo_solicitud = '${condition}'`];
         const params = [];
 
-        if (status) {
+
+        const normalizedStatus = status ? mapApiStatusToDb(status) : null;
+
+        if (normalizedStatus) {
             conditions.push('s.estado = ?');
+            params.push(normalizedStatus);
             params.push(status);
         }
 
@@ -353,8 +361,19 @@ class ApplicationRepository {
         result.autores = safeJSONParse(result.autores);
         result.asesores = safeJSONParse(result.asesores);
         result.jurados = safeJSONParse(result.jurados);
-        result.documentos = safeJSONParse(result.documentos);
-        result.historial = safeJSONParse(result.historial);
+        result.documentos = safeJSONParse(result.documentos).map((document) => ({
+            ...document,
+            status: mapDbStatusToApi(document.status),
+            rejection_history: (document.rejection_history || []).map((rejection) => ({
+                ...rejection,
+                status: mapDbStatusToApi(rejection.status)
+            }))
+        }));
+        result.historial = safeJSONParse(result.historial).map((entry) => ({
+            ...entry,
+            previous_status: mapDbStatusToApi(entry.previous_status),
+            new_status: mapDbStatusToApi(entry.new_status)
+        }));
 
         return {
             application_id: result.id_solicitud,
@@ -373,7 +392,7 @@ class ApplicationRepository {
             project_name: result.nombre_proyecto,
             observations: result.observaciones,
             published_thesis_link: result.link_tesis_publicada,
-            status: result.estado,
+            status: mapDbStatusToApi(result.estado),
             funding_type: result.tipo_financiamiento,
             application_date: result.fecha_solicitud,
             created_at: result.solicitud_created_at,
@@ -522,9 +541,19 @@ class ApplicationRepository {
                 }
             };
 
-            result.documentos = safeJSONParse(result.documentos);
-            result.historial = safeJSONParse(result.historial);
-            console.log('🔗 Link tesis publicada desde BD:', result.link_tesis_publicada);
+            result.documentos = safeJSONParse(result.documentos).map((document) => ({
+                ...document,
+                status: mapDbStatusToApi(document.status),
+                rejection_history: (document.rejection_history || []).map((rejection) => ({
+                    ...rejection,
+                    status: mapDbStatusToApi(rejection.status)
+                }))
+            }));
+            result.historial = safeJSONParse(result.historial).map((entry) => ({
+                ...entry,
+                previous_status: mapDbStatusToApi(entry.previous_status),
+                new_status: mapDbStatusToApi(entry.new_status)
+            }));
 
             const formattedResult = {
                 application_id: result.id_solicitud,
@@ -539,7 +568,7 @@ class ApplicationRepository {
                 },
                 project_name: result.nombre_proyecto,
                 observations: result.observaciones,
-                status: result.estado,
+                status: mapDbStatusToApi(result.estado),
                 created_at: result.fecha_solicitud,
                 publication_link: result.link_tesis_publicada,
                 documents: result.documentos.map(doc => ({
@@ -642,6 +671,7 @@ class ApplicationRepository {
 
         try {
             await connection.beginTransaction();
+            const normalizedStatus = mapApiStatusToDb(status);
 
             // Obtener información del documento y la solicitud
             const [docInfo] = await connection.execute(
@@ -666,28 +696,28 @@ class ApplicationRepository {
                 updated_at = NOW()
             WHERE id_documento = ?
         `;
-            await connection.execute(query, [status, rejectionReason, documentId]);
+            await connection.execute(query, [normalizedStatus, rejectionReason, documentId]);
 
             // 🆕 REGISTRAR EN HISTORIAL DE SOLICITUDES CON id_documento
             const idHistorial = uuidv4();
             const comentario = rejectionReason
-                ? `${tipo_documento} - ${status}: ${rejectionReason}`
-                : `${tipo_documento} - ${status}`;
+                ? `${tipo_documento} - ${normalizedStatus}: ${rejectionReason}`
+                : `${tipo_documento} - ${normalizedStatus}`;
 
             await connection.execute(
                 `INSERT INTO t_historial_solicitudes 
             (id_historial, id_solicitud, id_documento, estado_anterior, estado_nuevo, comentario, fecha_cambio)
             VALUES (?, ?, ?, ?, ?, ?, NOW())`,
-                [idHistorial, id_solicitud, documentId, estado_anterior, status, comentario]
+                [idHistorial, id_solicitud, documentId, estado_anterior, normalizedStatus, comentario]
             );
 
             // Registrar en historial de rechazos si aplica
-            if (status === 'rechazado' && rejectionReason) {
+            if (normalizedStatus === 'observado' && rejectionReason) {
                 const historialQuery = `
                 INSERT INTO t_historial_rechazos (id_documento, estado, razon_rechazo)
                 VALUES (?, ?, ?)
             `;
-                await connection.execute(historialQuery, [documentId, status, rejectionReason]);
+                await connection.execute(historialQuery, [documentId, normalizedStatus, rejectionReason]);
             }
 
             // Guardar imágenes si hay
@@ -783,7 +813,7 @@ class ApplicationRepository {
         WHERE id_solicitud = ?
     `;
 
-        await pool.execute(updateQuery, [newStatus, comment, applicationId]);
+        await pool.execute(updateQuery, [normalizedStatus, comment, applicationId]);
 
         const idHistory = uuidv4();
         const historyQuery = `
@@ -806,7 +836,7 @@ class ApplicationRepository {
         await pool.execute(historyQuery, [
             idHistory,
             applicationId,
-            newStatus,
+            normalizedStatus,
             comment,
             adminId,
             applicationId

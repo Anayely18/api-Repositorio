@@ -483,32 +483,41 @@ class ApplicationController {
     async updateDocumentReview(req, res) {
         try {
             const { documentId } = req.params;
-            console.log("estasdasdasdasdamos")
-            const { status, observation } = req.body;
-            const images = req.files || [];
+            console.log('updateDocumentReview body:', req.body);
+            console.log('updateDocumentReview raw files:', req.files);
 
-            if (!['pendiente', 'validado', 'rechazado'].includes(status)) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'Estado inválido'
-                });
+            const { status, observation } = req.body;
+
+            // Normalizar archivos: multer puede devolver array (upload.array) o objeto (upload.fields)
+            let imagesArray = [];
+            if (Array.isArray(req.files)) {
+                imagesArray = req.files;
+            } else if (req.files && typeof req.files === 'object') {
+                imagesArray = Object.values(req.files).flat();
             }
+
+            // Validar status
+            if (!['pendiente', 'aprobado', 'observado','publicado'].includes(status)) {
+                return res.status(400).json({ success: false, message: 'Estado inválido' });
+            }
+
+            // Validación adicional opcional
+            // if (imagesArray.length > 0) { ...comprobar propiedades... }
 
             const result = await applicationService.updateDocumentReview(
                 documentId,
                 status,
                 observation,
-                images
+                imagesArray
             );
-            console.log("equisde")
+
             return res.status(200).json({
                 success: true,
                 message: 'Documento actualizado correctamente',
                 data: result
             });
-
         } catch (error) {
-            console.error('Error al actualizar documento:', error);
+            console.error('Error al actualizar documento (stack):', error);
             return res.status(500).json({
                 success: false,
                 message: 'Error al actualizar el documento',
@@ -520,11 +529,16 @@ class ApplicationController {
     async updateApplicationReview(req, res) {
         try {
             const { id } = req.params;
-            console.log(req.body)
-            console.log("Tamos aqui")
             const { status, observations } = req.body;
-            const adminId = req.user?.id || null; // Asumiendo que tienes autenticación
-            console.log("estamos aqui")
+            const adminId = req.user?.id || null;
+
+            console.log('📝 Actualizando estado general de solicitud:', {
+                id,
+                status,
+                observations,
+                adminId
+            });
+
             if (!['pendiente', 'en_revision', 'aprobado', 'observado', 'requiere_correccion', 'publicado'].includes(status)) {
                 return res.status(400).json({
                     success: false,
@@ -541,19 +555,20 @@ class ApplicationController {
 
             return res.status(200).json({
                 success: true,
-                message: 'Solicitud actualizada correctamente',
+                message: 'Estado general de la solicitud actualizado correctamente',
                 data: result
             });
 
         } catch (error) {
-            console.error('Error al actualizar solicitud:', error);
+            console.error('❌ Error al actualizar solicitud:', error);
             return res.status(500).json({
                 success: false,
-                message: 'Error al actualizar la solicitud',
+                message: 'Error al actualizar el estado general de la solicitud',
                 error: process.env.NODE_ENV === 'development' ? error.message : undefined
             });
         }
     }
+
 
     async bulkUpdateDocuments(req, res) {
         try {
