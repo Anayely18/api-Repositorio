@@ -306,7 +306,26 @@ class ApplicationRepository {
                             FROM t_documentos_imagenes di
                             WHERE di.id_documento = d.id_documento),
                             JSON_ARRAY()
-                        )
+                        ),
+                        'rejection_history', IFNULL(
+                            (
+                                SELECT JSON_ARRAYAGG(
+                                JSON_OBJECT(
+                                    'history_id', hr.id_historial,
+                                    'status', hr.estado,
+                                    'rejection_reason', hr.razon_rechazo,
+                                    'rejected_at', hr.fecha_registro
+                                )
+                                )
+                                FROM (
+                                SELECT id_historial, estado, razon_rechazo, fecha_registro
+                                FROM t_historial_rechazos
+                                WHERE id_documento = d.id_documento
+                                ORDER BY fecha_registro DESC
+                                ) hr
+                            ),
+                            JSON_ARRAY()
+                            )
                     )
                 )
                 FROM t_documentos d
@@ -315,25 +334,41 @@ class ApplicationRepository {
             ) AS documentos,
             
             IFNULL(
-                (SELECT JSON_ARRAYAGG(
+                (
+                    SELECT JSON_ARRAYAGG(
                     JSON_OBJECT(
-                        'history_id', h.id_historial,
-                        'previous_status', h.estado_anterior,
-                        'new_status', h.estado_nuevo,
-                        'comment', h.comentario,
-                        'change_date', h.fecha_cambio,
-                        'admin_name', adm.nombre_usuario
+                        'history_id', hx.id_historial,
+                        'previous_status', hx.estado_anterior,
+                        'new_status', hx.estado_nuevo,
+                        'comment', hx.comentario,
+                        'change_date', hx.fecha_cambio,
+                        'admin_name', hx.admin_name,
+                        'document_id', hx.id_documento,
+                        'document_type', hx.document_type
                     )
-                )
-                FROM t_historial_solicitudes h
-                LEFT JOIN t_administradores adm ON h.id_admin = adm.id_admin
-                WHERE h.id_solicitud = s.id_solicitud
-                ORDER BY h.fecha_cambio DESC),
-                '[]'
+                    )
+                    FROM (
+                    SELECT
+                        h.id_historial,
+                        h.estado_anterior,
+                        h.estado_nuevo,
+                        h.comentario,
+                        h.fecha_cambio,
+                        h.id_documento,
+                        adm.nombre_usuario AS admin_name,
+                        d.tipo_documento AS document_type
+                    FROM t_historial_solicitudes h
+                    LEFT JOIN t_administradores adm ON h.id_admin = adm.id_admin
+                    LEFT JOIN t_documentos d ON h.id_documento = d.id_documento
+                    WHERE h.id_solicitud = s.id_solicitud
+                    ORDER BY h.fecha_cambio DESC
+                    ) hx
+                ),
+                JSON_ARRAY()
             ) AS historial
-            
-        FROM t_solicitudes s
-        WHERE s.id_solicitud = ?
+
+            FROM t_solicitudes s
+            WHERE s.id_solicitud = ?
     `;
 
         const [rows] = await pool.execute(query, [id]);
@@ -345,17 +380,19 @@ class ApplicationRepository {
         const result = rows[0];
 
         const safeJSONParse = (value) => {
-            if (!value || value === '' || value === 'null') {
-                return [];
-            }
+            if (value == null) return [];
+            if (Array.isArray(value)) return value;
+            if (typeof value === "object") return value; // ya viene parseado
+            if (value === "" || value === "null") return [];
+
             try {
                 const parsed = JSON.parse(value);
                 return Array.isArray(parsed) ? parsed : [];
-            } catch (error) {
-                console.error('Error parsing JSON:', value, error);
+            } catch {
                 return [];
             }
         };
+
 
         result.autores = safeJSONParse(result.autores);
         result.asesores = safeJSONParse(result.asesores);
