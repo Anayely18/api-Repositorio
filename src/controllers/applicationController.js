@@ -497,7 +497,7 @@ class ApplicationController {
             }
 
             // Validar status
-            if (!['pendiente', 'aprobado', 'observado','publicado'].includes(status)) {
+            if (!['pendiente', 'aprobado', 'observado', 'publicado'].includes(status)) {
                 return res.status(400).json({ success: false, message: 'Estado inválido' });
             }
 
@@ -628,6 +628,28 @@ class ApplicationController {
             return res.status(500).json({
                 success: false,
                 message: 'Error interno al guardar enlace de publicación'
+            });
+        }
+    }
+
+    async resubmitApplication(req, res) {
+        try {
+            const { id } = req.params;
+            const files = req.files; // Documentos corregidos
+            const userId = req.user.id;
+
+            const result = await versionService.resubmitWithCorrections(
+                id,
+                files,
+                userId
+            );
+
+            res.json(result);
+        } catch (error) {
+            console.error('Error al reenviar solicitud:', error);
+            res.status(400).json({
+                success: false,
+                message: error.message
             });
         }
     }

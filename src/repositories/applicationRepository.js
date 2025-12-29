@@ -437,7 +437,8 @@ class ApplicationRepository {
             advisors: result.asesores,
             jury: result.jurados,
             documents: result.documentos,
-            history: result.historial
+            history: result.historial,
+            file_path: document.file_path,
         };
     }
     async getApplicationByDni(dni, applicationType) {
@@ -884,6 +885,21 @@ class ApplicationRepository {
         }
     }
 
+    async getHistoryWithDocumentPaths(applicationId) {
+    const [rows] = await pool.execute(`
+        SELECT 
+            h.*,
+            h.file_path_historico,
+            d.document_type,
+            d.file_name as current_file_name
+        FROM t_historial_solicitudes h
+        LEFT JOIN t_documentos d ON h.id_documento = d.document_id
+        WHERE h.id_solicitud = ?
+        ORDER BY h.fecha_cambio DESC
+    `, [applicationId]);
+    
+    return rows;
+}
 
     async bulkUpdateDocuments(applicationId, documentUpdates) {
         // documentUpdates es un array de { documentId, status, observation, images }
