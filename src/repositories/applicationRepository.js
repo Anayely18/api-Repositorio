@@ -746,9 +746,9 @@ class ApplicationRepository {
 
             await connection.execute(
                 `INSERT INTO t_historial_solicitudes 
-            (id_historial, id_solicitud, id_documento, estado_anterior, estado_nuevo, comentario, fecha_cambio)
-            VALUES (?, ?, ?, ?, ?, ?, NOW())`,
-                [idHistorial, id_solicitud, documentId, estado_anterior, normalizedStatus, comentario]
+                (id_historial, id_solicitud, id_documento, estado_anterior, estado_nuevo, comentario, fecha_cambio, file_path_historico)
+                VALUES (?, ?, ?, ?, ?, ?, NOW(), ?)`,
+                [idHistorial, id_solicitud, documentId, estado_anterior, status, comentario, filePathActual]
             );
 
             // Registrar en historial de rechazos si aplica
@@ -886,7 +886,7 @@ class ApplicationRepository {
     }
 
     async getHistoryWithDocumentPaths(applicationId) {
-    const [rows] = await pool.execute(`
+        const [rows] = await pool.execute(`
         SELECT 
             h.*,
             h.file_path_historico,
@@ -897,9 +897,9 @@ class ApplicationRepository {
         WHERE h.id_solicitud = ?
         ORDER BY h.fecha_cambio DESC
     `, [applicationId]);
-    
-    return rows;
-}
+
+        return rows;
+    }
 
     async bulkUpdateDocuments(applicationId, documentUpdates) {
         // documentUpdates es un array de { documentId, status, observation, images }

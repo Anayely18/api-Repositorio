@@ -147,4 +147,10 @@ router.get('/search', applicationController.getApplicationByDni);
 
 router.post('/:id/publication-link', applicationController.savePublicationLink);
 
+router.get(
+    '/:id/history-with-paths',
+    applicationController.getHistoryWithPaths
+);
+
+
 export default router;

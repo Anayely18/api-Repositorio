@@ -4,6 +4,8 @@ import advisorService from '../services/advisorService.js';
 import juryService from '../services/juryService.js';
 import documentService from '../services/documentService.js';
 import { formatApplicationData } from '../utils/formatApplication.js';
+import versionService from '../services/versionService.js';
+import historialRepository from '../repositories/historialRepository.js';
 
 
 class ApplicationController {
@@ -635,21 +637,37 @@ class ApplicationController {
     async resubmitApplication(req, res) {
         try {
             const { id } = req.params;
-            const files = req.files; // Documentos corregidos
-            const userId = req.user.id;
+            const files = req.files || {};
 
-            const result = await versionService.resubmitWithCorrections(
-                id,
-                files,
-                userId
-            );
+            const result = await versionService.resubmitWithCorrections(id, files, req.user?.id || null);
 
-            res.json(result);
+            return res.status(201).json({
+                success: true,
+                message: `Nueva versión v${result.version} creada correctamente`,
+                data: result
+            });
         } catch (error) {
             console.error('Error al reenviar solicitud:', error);
-            res.status(400).json({
+            return res.status(400).json({
                 success: false,
                 message: error.message
+            });
+        }
+    }
+    async getHistoryWithPaths(req, res) {
+        try {
+            const { id } = req.params;
+            const history = await historialRepository.getHistoryWithDocumentPaths(id);
+
+            return res.status(200).json({
+                success: true,
+                history
+            });
+        } catch (error) {
+            console.error('Error al obtener historial:', error);
+            return res.status(500).json({
+                success: false,
+                message: 'Error al obtener historial'
             });
         }
     }
