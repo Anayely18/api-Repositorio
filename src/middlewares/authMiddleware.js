@@ -15,7 +15,8 @@ const authMiddleware = async (req, res, next) => {
         const token = authHeader.substring(7);
 
         const decoded = authService.verifyToken(token);
-
+        req.adminId = decoded.id;
+        
         const administrator = await administratorRepository.findById(decoded.id);
 
         if (!administrator) {

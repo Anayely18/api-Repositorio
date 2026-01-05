@@ -41,7 +41,10 @@ class AuthController {
             res.status(201).json({
                 success: true,
                 message: 'Administrador registrado exitosamente',
-                data: result
+                data: {
+                    token: result.token,
+                    user: result.administrator,
+                },
             });
         } catch (error) {
             if (error.message === 'Este correo ya esta registrado.') {
@@ -82,7 +85,10 @@ class AuthController {
             res.status(200).json({
                 success: true,
                 message: 'Inicio de sesión exitoso',
-                data: result
+                data: {
+                    token: result.token,
+                    user: result.administrator,
+                },
             });
         } catch (error) {
             if (error.message === 'Credenciales no válidas') {

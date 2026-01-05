@@ -5,6 +5,7 @@ export const mapApiStatusToDb = (apiStatus) => {
     pendiente: 'pendiente',
     aprobado: 'aprobado',
     observado: 'observado',
+    publicado :'publicado',
 
     // legacy (por si aún llegan)
     validado: 'aprobado',
@@ -21,6 +22,7 @@ export const mapDbStatusToApi = (dbStatus) => {
     pendiente: 'pendiente',
     aprobado: 'aprobado',
     observado: 'observado',
+    publicado: 'publicado',
 
     // legacy
     validado: 'aprobado',
