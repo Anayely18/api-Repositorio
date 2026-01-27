@@ -6,7 +6,7 @@ import documentService from '../services/documentService.js';
 import { formatApplicationData } from '../utils/formatApplication.js';
 import versionService from '../services/versionService.js';
 import historialRepository from '../repositories/historialRepository.js';
-
+import coauthorService from "../services/coauthorService.js";
 
 class ApplicationController {
 
@@ -154,9 +154,14 @@ class ApplicationController {
 
         console.log("📌 ENTRÓ A createTeacherApplication (DOCENTE)");
 
+
         try {
             const { checkboxes, teachers, coauthors, projectTitle } = req.body;
             const files = req.files;
+
+            // ✅ LOG para debug
+            console.log("👥 Coautores recibidos:", coauthors);
+            console.log("📊 Cantidad:", coauthors?.length || 0);
 
             if (!projectTitle || projectTitle.trim().length < 5) {
                 return res.status(400).json({
@@ -231,7 +236,7 @@ class ApplicationController {
 
             const idApplication = application.application.id;
 
-            const authorOrders = ['principal', 'segundo', 'tercero', 'coautor'];
+            const authorOrders = ['principal', 'segundo', 'tercero'];
 
             for (let i = 0; i < teachers.length; i++) {
                 const t = teachers[i];
@@ -252,32 +257,42 @@ class ApplicationController {
                 );
             }
 
-            if (coauthors?.length > 0) {
+            // ✅ NUEVO: Guardar COAUTORES en t_coautores
+            if (coauthors && Array.isArray(coauthors) && coauthors.length > 0) {
+                console.log(`💾 Guardando ${coauthors.length} coautores...`);
+
                 for (const c of coauthors) {
+                    if (!c || !c.nombre) {
+                        console.warn('⚠️ Coautor sin nombre, saltando:', c);
+                        continue;
+                    }
 
-                    if (!c || !c.dni || !c.nombre) continue;
+                    console.log('📝 Procesando coautor:', {
+                        tipoUbicacion: c.tipoUbicacion,
+                        tipoRol: c.tipoRol,
+                        nombre: c.nombre,
+                        apellido: c.apellido
+                    });
 
-                    let tipoColaborador = 'coautor';
-
-                    if (c.tipoUbicacion === 'interno')
-                        tipoColaborador = 'colaborador_interno';
-                    else if (c.tipoUbicacion === 'externo')
-                        tipoColaborador = 'colaborador_externo';
-
-                    await authorService.createAuthor(
-                        idApplication,
-                        'coautor',
-                        c.nombre,
-                        c.apellido || null,
-                        c.dni,
-                        c.orcid || null,
-                        c.tipoUbicacion === 'interno' ? c.escuela || null : null,
-                        tipoColaborador,
-                        c.tipoUbicacion || null,
-                        c.tipoRol || null
-                    );
+                    try {
+                        await coauthorService.createCoauthor(
+                            idApplication,
+                            c.tipoUbicacion || 'externo',
+                            c.tipoRol || 'estudiante',
+                            c.nombre,
+                            c.apellido || '',
+                            c.orcid || null
+                        );
+                        console.log('✅ Coautor guardado exitosamente');
+                    } catch (error) {
+                        console.error('❌ Error guardando coautor:', error);
+                        // No fallar toda la solicitud por un coautor
+                    }
                 }
+            } else {
+                console.log('ℹ️ No hay coautores para guardar');
             }
+
             const documentTypes = {
                 authorization: 'hoja_autorizacion',
                 document: 'constancia_empastado',
@@ -450,10 +465,10 @@ class ApplicationController {
                 });
             }
 
-            if (type === 'docente' && dni.length !== 6) {
+            if (type === 'docente' && dni.length !== 8) {
                 return res.status(400).json({
                     success: false,
-                    message: 'El código de docente debe tener 6 dígitos'
+                    message: 'El DNI de docente debe tener 8 dígitos'
                 });
             }
             const application = await applicationService.getApplicationByDni(dni, type);
@@ -639,21 +654,38 @@ class ApplicationController {
             const { id } = req.params;
             const files = req.files || {};
 
-            const result = await versionService.resubmitWithCorrections(id, files, req.user?.id || null);
+            console.log('📝 Reenviando solicitud:', id);
+            console.log('📁 Archivos recibidos:', Object.keys(files));
+
+            // Validar que haya al menos un archivo
+            if (Object.keys(files).length === 0) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Debes adjuntar al menos un documento'
+                });
+            }
+
+            const result = await versionService.resubmitWithCorrections(
+                id,
+                files,
+                req.user?.id || null
+            );
 
             return res.status(201).json({
                 success: true,
                 message: `Nueva versión v${result.version} creada correctamente`,
                 data: result
             });
+
         } catch (error) {
-            console.error('Error al reenviar solicitud:', error);
+            console.error('❌ Error al reenviar solicitud:', error);
             return res.status(400).json({
                 success: false,
-                message: error.message
+                message: error.message || 'Error al reenviar documentos'
             });
         }
     }
+
     async getHistoryWithPaths(req, res) {
         try {
             const { id } = req.params;
