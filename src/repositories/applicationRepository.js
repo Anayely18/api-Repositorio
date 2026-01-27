@@ -282,7 +282,23 @@ class ApplicationRepository {
                 WHERE j.id_solicitud = s.id_solicitud),
                 '[]'
             ) AS jurados,
-            
+            IFNULL(
+                (SELECT JSON_ARRAYAGG(
+                    JSON_OBJECT(
+                        'coauthor_id', c.id_coautor,
+                        'location_type', c.tipo_ubicacion,
+                        'role_type', c.tipo_rol,
+                        'first_name', c.nombres,
+                        'last_name', c.apellidos,
+                        'orcid_url', c.orcid_url,
+                        'created_at', c.created_at
+                    )
+                )
+                FROM t_coautores c
+                WHERE c.id_solicitud = s.id_solicitud
+                ORDER BY c.created_at ASC),
+                '[]'
+            ) AS coautores,
             IFNULL(
                 (SELECT JSON_ARRAYAGG(
                     JSON_OBJECT(
@@ -371,6 +387,7 @@ class ApplicationRepository {
             WHERE s.id_solicitud = ?
     `;
 
+
         const [rows] = await pool.execute(query, [id]);
 
         if (rows.length === 0) {
@@ -397,6 +414,9 @@ class ApplicationRepository {
         result.autores = safeJSONParse(result.autores);
         result.asesores = safeJSONParse(result.asesores);
         result.jurados = safeJSONParse(result.jurados);
+        result.coautores = safeJSONParse(result.coautores);
+        console.log('🔍 Coautores encontrados:', result.coautores);
+        console.log('📊 Total coautores:', safeJSONParse(result.coautores).length);
         result.documentos = safeJSONParse(result.documentos).map((document) => ({
             ...document,
             status: mapDbStatusToApi(document.status),
@@ -436,9 +456,10 @@ class ApplicationRepository {
             authors: result.autores,
             advisors: result.asesores,
             jury: result.jurados,
+            coauthors: result.coautores,
             documents: result.documentos,
             history: result.historial,
-            file_path: document.file_path,
+
         };
     }
     async getApplicationByDni(dni, applicationType) {
@@ -461,7 +482,21 @@ class ApplicationRepository {
             s.link_tesis_publicada,
             s.created_at AS solicitud_created_at,
             s.updated_at AS solicitud_updated_at,
-            
+            IFNULL(
+                (SELECT JSON_ARRAYAGG(
+                    JSON_OBJECT(
+                        'author_id', a.id_autor,
+                        'author_order', a.orden_autor,
+                        'first_name', a.nombres,
+                        'last_name', a.apellidos,
+                        'dni', a.dni,
+                        'professional_school', a.escuela_profesional
+                    )
+                )
+                FROM t_autores a
+                WHERE a.id_solicitud = s.id_solicitud),
+                '[]'
+                ) AS autores,
             IFNULL(
                 (SELECT JSON_ARRAYAGG(
                     JSON_OBJECT(
@@ -527,15 +562,24 @@ class ApplicationRepository {
             ) AS historial
             
         FROM t_solicitudes s
-        WHERE s.dni = ? AND s.tipo_solicitud = ?
+        WHERE s.tipo_solicitud = ?
+        AND (
+            s.dni = ?
+            OR EXISTS (
+                SELECT 1 
+                FROM t_autores a 
+                WHERE a.id_solicitud = s.id_solicitud 
+                AND a.dni = ?
+            )
+        )
         ORDER BY s.fecha_solicitud DESC
         LIMIT 1
     `;
 
-        console.log('📝 Ejecutando query con params:', [dni, applicationType]);
+        console.log('📝 Ejecutando query con params:', [applicationType, dni, dni]);
 
         try {
-            const [rows] = await pool.execute(query, [dni, applicationType]);
+            const [rows] = await pool.execute(query, [applicationType, dni, dni]);
 
             console.log('📊 Número de resultados:', rows.length);
 
@@ -550,9 +594,16 @@ class ApplicationRepository {
                 console.log('❌ No se encontraron resultados');
 
                 const checkQuery = `
-                SELECT dni, tipo_solicitud, nombres, apellidos 
-                FROM t_solicitudes 
-                WHERE dni LIKE ? OR tipo_solicitud = ?
+                SELECT 
+                    s.dni, 
+                    s.tipo_solicitud, 
+                    s.nombres, 
+                    s.apellidos,
+                    GROUP_CONCAT(a.dni SEPARATOR ', ') as autores_dnis
+                FROM t_solicitudes s
+                LEFT JOIN t_autores a ON a.id_solicitud = s.id_solicitud
+                WHERE s.dni LIKE ? OR s.tipo_solicitud = ?
+                GROUP BY s.id_solicitud
                 LIMIT 5
             `;
                 const [checkRows] = await pool.execute(checkQuery, [`%${dni}%`, applicationType]);
@@ -577,6 +628,7 @@ class ApplicationRepository {
                     return [];
                 }
             };
+            result.autores = safeJSONParse(result.autores);
 
             result.documentos = safeJSONParse(result.documentos).map((document) => ({
                 ...document,
@@ -601,7 +653,8 @@ class ApplicationRepository {
                     email: result.solicitante_email,
                     dni: result.solicitante_dni,
                     phone: result.numero_contacto,
-                    professional_school: result.escuela_profesional
+                    professional_school: result.escuela_profesional,
+                    authors: result.autores
                 },
                 project_name: result.nombre_proyecto,
                 observations: result.observaciones,
@@ -637,7 +690,6 @@ class ApplicationRepository {
                     const historialDate = new Date(h.change_date);
                     const relatedImages = [];
 
-                    // Buscar imágenes subidas cerca de esta fecha (±10 minutos)
                     result.documentos.forEach(doc => {
                         if (doc.images && doc.images.length > 0) {
                             doc.images.forEach(img => {
@@ -678,7 +730,6 @@ class ApplicationRepository {
                 formattedResult.documents.filter(doc => doc.rejection_history.length > 0).length
             );
 
-            // Log detallado de las imágenes y rechazos
             formattedResult.documents.forEach((doc, idx) => {
                 if (doc.images.length > 0) {
                     console.log(`📷 Documento ${idx + 1} (${doc.name}): ${doc.images.length} imágenes`);
@@ -713,9 +764,9 @@ class ApplicationRepository {
             if (!["pendiente", "aprobado", "observado"].includes(normalizedStatus)) {
                 throw new Error(`Estado inválido para DB: ${normalizedStatus}`);
             }
-            // Obtener información del documento y la solicitud
+            // ✅ PRIMERO: Obtener información del documento INCLUYENDO la ruta del archivo
             const [docInfo] = await connection.execute(
-                `SELECT id_solicitud, tipo_documento, estado as estado_anterior 
+                `SELECT id_solicitud, tipo_documento, estado as estado_anterior, ruta_archivo 
              FROM t_documentos 
              WHERE id_documento = ?`,
                 [documentId]
@@ -725,7 +776,12 @@ class ApplicationRepository {
                 throw new Error('Documento no encontrado');
             }
 
-            const { id_solicitud, tipo_documento, estado_anterior } = docInfo[0];
+            const { id_solicitud, tipo_documento, estado_anterior, ruta_archivo } = docInfo[0];
+
+            // ✅ DEFINIR filePathActual desde la query
+            const filePathActual = ruta_archivo || null;
+
+            console.log('📁 Ruta del archivo:', filePathActual);
 
             // Actualizar el documento
             const query = `
@@ -738,17 +794,22 @@ class ApplicationRepository {
         `;
             await connection.execute(query, [normalizedStatus, rejectionReason, documentId]);
 
-            // 🆕 REGISTRAR EN HISTORIAL DE SOLICITUDES CON id_documento
+            // ✅ Registrar en historial con la ruta del archivo
             const idHistorial = uuidv4();
             const comentario = rejectionReason
                 ? `${tipo_documento} - ${normalizedStatus}: ${rejectionReason}`
                 : `${tipo_documento} - ${normalizedStatus}`;
 
+            console.log('💬 Comentario a guardar:', comentario);
+            console.log('📄 ID Documento:', documentId);
+            console.log('📊 Estado anterior:', estado_anterior);
+            console.log('📊 Estado nuevo:', normalizedStatus);
+
             await connection.execute(
                 `INSERT INTO t_historial_solicitudes 
-                (id_historial, id_solicitud, id_documento, estado_anterior, estado_nuevo, comentario, fecha_cambio, file_path_historico)
-                VALUES (?, ?, ?, ?, ?, ?, NOW(), ?)`,
-                [idHistorial, id_solicitud, documentId, estado_anterior, status, comentario, filePathActual]
+            (id_historial, id_solicitud, id_documento, estado_anterior, estado_nuevo, comentario, fecha_cambio, file_path_historico)
+            VALUES (?, ?, ?, ?, ?, ?, NOW(), ?)`,
+                [idHistorial, id_solicitud, documentId, estado_anterior, normalizedStatus, comentario, filePathActual]
             );
 
             // Registrar en historial de rechazos si aplica
@@ -763,14 +824,17 @@ class ApplicationRepository {
             // Guardar imágenes si hay
             let imageIds = [];
             if (images && images.length > 0) {
+                console.log('📸 Guardando', images.length, 'imágenes');
                 imageIds = await this.saveDocumentImages(documentId, images, connection);
             }
 
             await connection.commit();
+            console.log('✅ Documento actualizado correctamente');
             return { success: true };
+
         } catch (error) {
             await connection.rollback();
-            console.error('Error en updateDocumentStatus:', error);
+            console.error('❌ Error en updateDocumentStatus:', error);
             throw error;
         } finally {
             connection.release();
@@ -849,36 +913,89 @@ class ApplicationRepository {
 
             const normalizedStatus = mapApiStatusToDb(newStatus);
 
-            // leer estado anterior
+            console.log('🔍 updateApplicationStatus - Inicio:', {
+                applicationId,
+                newStatus,
+                normalizedStatus,
+                comment,
+                adminId,
+                commentType: typeof comment,
+                commentLength: comment?.length
+            });
+
+            // Leer estado anterior
             const [prev] = await connection.execute(
                 "SELECT estado FROM t_solicitudes WHERE id_solicitud = ? LIMIT 1",
                 [applicationId]
             );
-            if (prev.length === 0) throw new Error("Solicitud no encontrada");
+
+            if (prev.length === 0) {
+                throw new Error("Solicitud no encontrada");
+            }
 
             const previousStatus = prev[0].estado;
+            console.log('📊 Estado anterior:', previousStatus);
 
-            // actualizar solicitud
-            await connection.execute(
-                `UPDATE t_solicitudes
-       SET estado = ?, observaciones = ?, updated_at = NOW()
-       WHERE id_solicitud = ?`,
-                [normalizedStatus, comment, applicationId]
-            );
+            // Actualizar solicitud
+            const updateQuery = `
+            UPDATE t_solicitudes
+            SET estado = ?, observaciones = ?, updated_at = NOW()
+            WHERE id_solicitud = ?
+        `;
 
-            // insertar historial (id_documento NULL)
+            await connection.execute(updateQuery, [normalizedStatus, comment, applicationId]);
+            console.log('✅ Solicitud actualizada');
+
+            // Insertar en historial
             const idHistory = uuidv4();
-            await connection.execute(
-                `INSERT INTO t_historial_solicitudes
-       (id_historial, id_solicitud, id_documento, estado_anterior, estado_nuevo, comentario, id_admin, fecha_cambio)
-       VALUES (?, ?, NULL, ?, ?, ?, ?, NOW())`,
-                [idHistory, applicationId, previousStatus, normalizedStatus, comment, adminId]
-            );
+
+            // ✅ IMPORTANTE: id_documento debe ser NULL para cambios de estado general
+            const historyParams = [
+                idHistory,           // id_historial
+                applicationId,       // id_solicitud  
+                null,                // id_documento (NULL porque es cambio general)
+                previousStatus,      // estado_anterior
+                normalizedStatus,    // estado_nuevo
+                comment || null      // comentario (convertir string vacío a null)
+            ];
+
+            console.log('📝 Parámetros del historial:', historyParams);
+
+            if (adminId) {
+                // Con id_admin
+                const historyQueryWithAdmin = `
+                INSERT INTO t_historial_solicitudes
+                (id_historial, id_solicitud, id_documento, estado_anterior, estado_nuevo, comentario, id_admin, fecha_cambio)
+                VALUES (?, ?, ?, ?, ?, ?, ?, NOW())
+            `;
+
+                await connection.execute(historyQueryWithAdmin, [...historyParams, adminId]);
+                console.log('✅ Historial insertado CON admin_id:', adminId);
+            } else {
+                // Sin id_admin
+                const historyQueryWithoutAdmin = `
+                INSERT INTO t_historial_solicitudes
+                (id_historial, id_solicitud, id_documento, estado_anterior, estado_nuevo, comentario, fecha_cambio)
+                VALUES (?, ?, ?, ?, ?, ?, NOW())
+            `;
+
+                await connection.execute(historyQueryWithoutAdmin, historyParams);
+                console.log('✅ Historial insertado SIN admin_id');
+            }
 
             await connection.commit();
+            console.log('✅ Transacción completada');
+
             return { success: true };
+
         } catch (e) {
             await connection.rollback();
+            console.error('❌ Error en updateApplicationStatus:', {
+                error: e.message,
+                code: e.code,
+                errno: e.errno,
+                sql: e.sql
+            });
             throw e;
         } finally {
             connection.release();
