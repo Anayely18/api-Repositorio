@@ -1,5 +1,8 @@
+import { mapDbStatusToApi } from '../utils/statusMapper.js';
+
 class Application {
     constructor(data) {
+        const rawStatus = data.status ?? data.estado ?? '';
         this.id = data.id_solicitud;
         this.applicationType = data.tipo_solicitud;
         this.name = data.nombres;
@@ -14,11 +17,10 @@ class Application {
         this.projectName = data.nombre_proyecto;
         this.observations = data.observaciones;
         this.linkToPublishedTesis = data.link_tesis_publicada;
-        this.status = data.estado;
+        this.status = mapDbStatusToApi(rawStatus);
         this.applicationDate = data.fecha_solicitud;
         this.createdAt = data.created_at;
         this.updatedAt = data.updated_at;
-
         this.searchAuthors = data.autores_busqueda;
     }
 

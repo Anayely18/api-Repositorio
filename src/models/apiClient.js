@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API = axios.create({ baseURL: import.meta.env.VITE_API_URL || 'http://localhost:3000/ap/aplications' });
+const API = axios.create({ baseURL: import.meta.env.VITE_API_URL || '/api' });
 
 // 1) crear trámite estudiante (SIN archivos)
 export const crearTramiteEstudiante = (payload) =>

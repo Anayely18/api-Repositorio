@@ -4,7 +4,9 @@ import advisorService from '../services/advisorService.js';
 import juryService from '../services/juryService.js';
 import documentService from '../services/documentService.js';
 import { formatApplicationData } from '../utils/formatApplication.js';
-
+import versionService from '../services/versionService.js';
+import historialRepository from '../repositories/historialRepository.js';
+import coauthorService from "../services/coauthorService.js";
 
 class ApplicationController {
 
@@ -152,9 +154,14 @@ class ApplicationController {
 
         console.log("📌 ENTRÓ A createTeacherApplication (DOCENTE)");
 
+
         try {
             const { checkboxes, teachers, coauthors, projectTitle } = req.body;
             const files = req.files;
+
+            // ✅ LOG para debug
+            console.log("👥 Coautores recibidos:", coauthors);
+            console.log("📊 Cantidad:", coauthors?.length || 0);
 
             if (!projectTitle || projectTitle.trim().length < 5) {
                 return res.status(400).json({
@@ -229,7 +236,7 @@ class ApplicationController {
 
             const idApplication = application.application.id;
 
-            const authorOrders = ['principal', 'segundo', 'tercero', 'coautor'];
+            const authorOrders = ['principal', 'segundo', 'tercero'];
 
             for (let i = 0; i < teachers.length; i++) {
                 const t = teachers[i];
@@ -250,32 +257,42 @@ class ApplicationController {
                 );
             }
 
-            if (coauthors?.length > 0) {
+            // ✅ NUEVO: Guardar COAUTORES en t_coautores
+            if (coauthors && Array.isArray(coauthors) && coauthors.length > 0) {
+                console.log(`💾 Guardando ${coauthors.length} coautores...`);
+
                 for (const c of coauthors) {
+                    if (!c || !c.nombre) {
+                        console.warn('⚠️ Coautor sin nombre, saltando:', c);
+                        continue;
+                    }
 
-                    if (!c || !c.dni || !c.nombre) continue;
+                    console.log('📝 Procesando coautor:', {
+                        tipoUbicacion: c.tipoUbicacion,
+                        tipoRol: c.tipoRol,
+                        nombre: c.nombre,
+                        apellido: c.apellido
+                    });
 
-                    let tipoColaborador = 'coautor';
-
-                    if (c.tipoUbicacion === 'interno')
-                        tipoColaborador = 'colaborador_interno';
-                    else if (c.tipoUbicacion === 'externo')
-                        tipoColaborador = 'colaborador_externo';
-
-                    await authorService.createAuthor(
-                        idApplication,
-                        'coautor',
-                        c.nombre,
-                        c.apellido || null,
-                        c.dni,
-                        c.orcid || null,
-                        c.tipoUbicacion === 'interno' ? c.escuela || null : null,
-                        tipoColaborador,
-                        c.tipoUbicacion || null,
-                        c.tipoRol || null
-                    );
+                    try {
+                        await coauthorService.createCoauthor(
+                            idApplication,
+                            c.tipoUbicacion || 'externo',
+                            c.tipoRol || 'estudiante',
+                            c.nombre,
+                            c.apellido || '',
+                            c.orcid || null
+                        );
+                        console.log('✅ Coautor guardado exitosamente');
+                    } catch (error) {
+                        console.error('❌ Error guardando coautor:', error);
+                        // No fallar toda la solicitud por un coautor
+                    }
                 }
+            } else {
+                console.log('ℹ️ No hay coautores para guardar');
             }
+
             const documentTypes = {
                 authorization: 'hoja_autorizacion',
                 document: 'constancia_empastado',
@@ -448,10 +465,10 @@ class ApplicationController {
                 });
             }
 
-            if (type === 'docente' && dni.length !== 6) {
+            if (type === 'docente' && dni.length !== 8) {
                 return res.status(400).json({
                     success: false,
-                    message: 'El código de docente debe tener 6 dígitos'
+                    message: 'El DNI de docente debe tener 8 dígitos'
                 });
             }
             const application = await applicationService.getApplicationByDni(dni, type);
@@ -483,32 +500,41 @@ class ApplicationController {
     async updateDocumentReview(req, res) {
         try {
             const { documentId } = req.params;
-            console.log("estasdasdasdasdamos")
-            const { status, observation } = req.body;
-            const images = req.files || [];
+            console.log('updateDocumentReview body:', req.body);
+            console.log('updateDocumentReview raw files:', req.files);
 
-            if (!['pendiente', 'validado', 'rechazado'].includes(status)) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'Estado inválido'
-                });
+            const { status, observation } = req.body;
+
+            // Normalizar archivos: multer puede devolver array (upload.array) o objeto (upload.fields)
+            let imagesArray = [];
+            if (Array.isArray(req.files)) {
+                imagesArray = req.files;
+            } else if (req.files && typeof req.files === 'object') {
+                imagesArray = Object.values(req.files).flat();
             }
+
+            // Validar status
+            if (!['pendiente', 'aprobado', 'observado', 'publicado'].includes(status)) {
+                return res.status(400).json({ success: false, message: 'Estado inválido' });
+            }
+
+            // Validación adicional opcional
+            // if (imagesArray.length > 0) { ...comprobar propiedades... }
 
             const result = await applicationService.updateDocumentReview(
                 documentId,
                 status,
                 observation,
-                images
+                imagesArray
             );
-            console.log("equisde")
+
             return res.status(200).json({
                 success: true,
                 message: 'Documento actualizado correctamente',
                 data: result
             });
-
         } catch (error) {
-            console.error('Error al actualizar documento:', error);
+            console.error('Error al actualizar documento (stack):', error);
             return res.status(500).json({
                 success: false,
                 message: 'Error al actualizar el documento',
@@ -520,11 +546,16 @@ class ApplicationController {
     async updateApplicationReview(req, res) {
         try {
             const { id } = req.params;
-            console.log(req.body)
-            console.log("Tamos aqui")
             const { status, observations } = req.body;
-            const adminId = req.user?.id || null; // Asumiendo que tienes autenticación
-            console.log("estamos aqui")
+            const adminId = req.user?.id || null;
+
+            console.log('📝 Actualizando estado general de solicitud:', {
+                id,
+                status,
+                observations,
+                adminId
+            });
+
             if (!['pendiente', 'en_revision', 'aprobado', 'observado', 'requiere_correccion', 'publicado'].includes(status)) {
                 return res.status(400).json({
                     success: false,
@@ -541,19 +572,20 @@ class ApplicationController {
 
             return res.status(200).json({
                 success: true,
-                message: 'Solicitud actualizada correctamente',
+                message: 'Estado general de la solicitud actualizado correctamente',
                 data: result
             });
 
         } catch (error) {
-            console.error('Error al actualizar solicitud:', error);
+            console.error('❌ Error al actualizar solicitud:', error);
             return res.status(500).json({
                 success: false,
-                message: 'Error al actualizar la solicitud',
+                message: 'Error al actualizar el estado general de la solicitud',
                 error: process.env.NODE_ENV === 'development' ? error.message : undefined
             });
         }
     }
+
 
     async bulkUpdateDocuments(req, res) {
         try {
@@ -613,6 +645,61 @@ class ApplicationController {
             return res.status(500).json({
                 success: false,
                 message: 'Error interno al guardar enlace de publicación'
+            });
+        }
+    }
+
+    async resubmitApplication(req, res) {
+        try {
+            const { id } = req.params;
+            const files = req.files || {};
+
+            console.log('📝 Reenviando solicitud:', id);
+            console.log('📁 Archivos recibidos:', Object.keys(files));
+
+            // Validar que haya al menos un archivo
+            if (Object.keys(files).length === 0) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Debes adjuntar al menos un documento'
+                });
+            }
+
+            const result = await versionService.resubmitWithCorrections(
+                id,
+                files,
+                req.user?.id || null
+            );
+
+            return res.status(201).json({
+                success: true,
+                message: `Nueva versión v${result.version} creada correctamente`,
+                data: result
+            });
+
+        } catch (error) {
+            console.error('❌ Error al reenviar solicitud:', error);
+            return res.status(400).json({
+                success: false,
+                message: error.message || 'Error al reenviar documentos'
+            });
+        }
+    }
+
+    async getHistoryWithPaths(req, res) {
+        try {
+            const { id } = req.params;
+            const history = await historialRepository.getHistoryWithDocumentPaths(id);
+
+            return res.status(200).json({
+                success: true,
+                history
+            });
+        } catch (error) {
+            console.error('Error al obtener historial:', error);
+            return res.status(500).json({
+                success: false,
+                message: 'Error al obtener historial'
             });
         }
     }

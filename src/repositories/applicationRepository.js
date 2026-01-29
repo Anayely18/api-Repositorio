@@ -1,6 +1,9 @@
 import pool from "../config/database.js";
 import Application from "../models/Application.js";
 import { v4 as uuidv4 } from "uuid";
+import { mapApiStatusToDb, mapDbStatusToApi } from "../utils/statusMapper.js";
+
+
 class ApplicationRepository {
 
     async create(
@@ -100,10 +103,14 @@ class ApplicationRepository {
         const conditions = [`s.tipo_solicitud = '${condition}'`];
         const params = [];
 
-        if (status) {
-            conditions.push('s.estado = ?');
-            params.push(status);
+
+        const normalizedStatus = status ? mapApiStatusToDb(status) : null;
+
+        if (normalizedStatus) {
+            conditions.push("s.estado = ?");
+            params.push(normalizedStatus);
         }
+
 
         if (search) {
             conditions.push(`(
@@ -275,7 +282,23 @@ class ApplicationRepository {
                 WHERE j.id_solicitud = s.id_solicitud),
                 '[]'
             ) AS jurados,
-            
+            IFNULL(
+                (SELECT JSON_ARRAYAGG(
+                    JSON_OBJECT(
+                        'coauthor_id', c.id_coautor,
+                        'location_type', c.tipo_ubicacion,
+                        'role_type', c.tipo_rol,
+                        'first_name', c.nombres,
+                        'last_name', c.apellidos,
+                        'orcid_url', c.orcid_url,
+                        'created_at', c.created_at
+                    )
+                )
+                FROM t_coautores c
+                WHERE c.id_solicitud = s.id_solicitud
+                ORDER BY c.created_at ASC),
+                '[]'
+            ) AS coautores,
             IFNULL(
                 (SELECT JSON_ARRAYAGG(
                     JSON_OBJECT(
@@ -299,7 +322,26 @@ class ApplicationRepository {
                             FROM t_documentos_imagenes di
                             WHERE di.id_documento = d.id_documento),
                             JSON_ARRAY()
-                        )
+                        ),
+                        'rejection_history', IFNULL(
+                            (
+                                SELECT JSON_ARRAYAGG(
+                                JSON_OBJECT(
+                                    'history_id', hr.id_historial,
+                                    'status', hr.estado,
+                                    'rejection_reason', hr.razon_rechazo,
+                                    'rejected_at', hr.fecha_registro
+                                )
+                                )
+                                FROM (
+                                SELECT id_historial, estado, razon_rechazo, fecha_registro
+                                FROM t_historial_rechazos
+                                WHERE id_documento = d.id_documento
+                                ORDER BY fecha_registro DESC
+                                ) hr
+                            ),
+                            JSON_ARRAY()
+                            )
                     )
                 )
                 FROM t_documentos d
@@ -308,26 +350,43 @@ class ApplicationRepository {
             ) AS documentos,
             
             IFNULL(
-                (SELECT JSON_ARRAYAGG(
+                (
+                    SELECT JSON_ARRAYAGG(
                     JSON_OBJECT(
-                        'history_id', h.id_historial,
-                        'previous_status', h.estado_anterior,
-                        'new_status', h.estado_nuevo,
-                        'comment', h.comentario,
-                        'change_date', h.fecha_cambio,
-                        'admin_name', adm.nombre_usuario
+                        'history_id', hx.id_historial,
+                        'previous_status', hx.estado_anterior,
+                        'new_status', hx.estado_nuevo,
+                        'comment', hx.comentario,
+                        'change_date', hx.fecha_cambio,
+                        'admin_name', hx.admin_name,
+                        'document_id', hx.id_documento,
+                        'document_type', hx.document_type
                     )
-                )
-                FROM t_historial_solicitudes h
-                LEFT JOIN t_administradores adm ON h.id_admin = adm.id_admin
-                WHERE h.id_solicitud = s.id_solicitud
-                ORDER BY h.fecha_cambio DESC),
-                '[]'
+                    )
+                    FROM (
+                    SELECT
+                        h.id_historial,
+                        h.estado_anterior,
+                        h.estado_nuevo,
+                        h.comentario,
+                        h.fecha_cambio,
+                        h.id_documento,
+                        adm.nombre_usuario AS admin_name,
+                        d.tipo_documento AS document_type
+                    FROM t_historial_solicitudes h
+                    LEFT JOIN t_administradores adm ON h.id_admin = adm.id_admin
+                    LEFT JOIN t_documentos d ON h.id_documento = d.id_documento
+                    WHERE h.id_solicitud = s.id_solicitud
+                    ORDER BY h.fecha_cambio DESC
+                    ) hx
+                ),
+                JSON_ARRAY()
             ) AS historial
-            
-        FROM t_solicitudes s
-        WHERE s.id_solicitud = ?
+
+            FROM t_solicitudes s
+            WHERE s.id_solicitud = ?
     `;
+
 
         const [rows] = await pool.execute(query, [id]);
 
@@ -338,23 +397,39 @@ class ApplicationRepository {
         const result = rows[0];
 
         const safeJSONParse = (value) => {
-            if (!value || value === '' || value === 'null') {
-                return [];
-            }
+            if (value == null) return [];
+            if (Array.isArray(value)) return value;
+            if (typeof value === "object") return value; // ya viene parseado
+            if (value === "" || value === "null") return [];
+
             try {
                 const parsed = JSON.parse(value);
                 return Array.isArray(parsed) ? parsed : [];
-            } catch (error) {
-                console.error('Error parsing JSON:', value, error);
+            } catch {
                 return [];
             }
         };
 
+
         result.autores = safeJSONParse(result.autores);
         result.asesores = safeJSONParse(result.asesores);
         result.jurados = safeJSONParse(result.jurados);
-        result.documentos = safeJSONParse(result.documentos);
-        result.historial = safeJSONParse(result.historial);
+        result.coautores = safeJSONParse(result.coautores);
+        console.log('🔍 Coautores encontrados:', result.coautores);
+        console.log('📊 Total coautores:', safeJSONParse(result.coautores).length);
+        result.documentos = safeJSONParse(result.documentos).map((document) => ({
+            ...document,
+            status: mapDbStatusToApi(document.status),
+            rejection_history: (document.rejection_history || []).map((rejection) => ({
+                ...rejection,
+                status: mapDbStatusToApi(rejection.status)
+            }))
+        }));
+        result.historial = safeJSONParse(result.historial).map((entry) => ({
+            ...entry,
+            previous_status: mapDbStatusToApi(entry.previous_status),
+            new_status: mapDbStatusToApi(entry.new_status)
+        }));
 
         return {
             application_id: result.id_solicitud,
@@ -373,7 +448,7 @@ class ApplicationRepository {
             project_name: result.nombre_proyecto,
             observations: result.observaciones,
             published_thesis_link: result.link_tesis_publicada,
-            status: result.estado,
+            status: mapDbStatusToApi(result.estado),
             funding_type: result.tipo_financiamiento,
             application_date: result.fecha_solicitud,
             created_at: result.solicitud_created_at,
@@ -381,8 +456,10 @@ class ApplicationRepository {
             authors: result.autores,
             advisors: result.asesores,
             jury: result.jurados,
+            coauthors: result.coautores,
             documents: result.documentos,
-            history: result.historial
+            history: result.historial,
+
         };
     }
     async getApplicationByDni(dni, applicationType) {
@@ -405,7 +482,21 @@ class ApplicationRepository {
             s.link_tesis_publicada,
             s.created_at AS solicitud_created_at,
             s.updated_at AS solicitud_updated_at,
-            
+            IFNULL(
+                (SELECT JSON_ARRAYAGG(
+                    JSON_OBJECT(
+                        'author_id', a.id_autor,
+                        'author_order', a.orden_autor,
+                        'first_name', a.nombres,
+                        'last_name', a.apellidos,
+                        'dni', a.dni,
+                        'professional_school', a.escuela_profesional
+                    )
+                )
+                FROM t_autores a
+                WHERE a.id_solicitud = s.id_solicitud),
+                '[]'
+                ) AS autores,
             IFNULL(
                 (SELECT JSON_ARRAYAGG(
                     JSON_OBJECT(
@@ -471,15 +562,24 @@ class ApplicationRepository {
             ) AS historial
             
         FROM t_solicitudes s
-        WHERE s.dni = ? AND s.tipo_solicitud = ?
+        WHERE s.tipo_solicitud = ?
+        AND (
+            s.dni = ?
+            OR EXISTS (
+                SELECT 1 
+                FROM t_autores a 
+                WHERE a.id_solicitud = s.id_solicitud 
+                AND a.dni = ?
+            )
+        )
         ORDER BY s.fecha_solicitud DESC
         LIMIT 1
     `;
 
-        console.log('📝 Ejecutando query con params:', [dni, applicationType]);
+        console.log('📝 Ejecutando query con params:', [applicationType, dni, dni]);
 
         try {
-            const [rows] = await pool.execute(query, [dni, applicationType]);
+            const [rows] = await pool.execute(query, [applicationType, dni, dni]);
 
             console.log('📊 Número de resultados:', rows.length);
 
@@ -494,9 +594,16 @@ class ApplicationRepository {
                 console.log('❌ No se encontraron resultados');
 
                 const checkQuery = `
-                SELECT dni, tipo_solicitud, nombres, apellidos 
-                FROM t_solicitudes 
-                WHERE dni LIKE ? OR tipo_solicitud = ?
+                SELECT 
+                    s.dni, 
+                    s.tipo_solicitud, 
+                    s.nombres, 
+                    s.apellidos,
+                    GROUP_CONCAT(a.dni SEPARATOR ', ') as autores_dnis
+                FROM t_solicitudes s
+                LEFT JOIN t_autores a ON a.id_solicitud = s.id_solicitud
+                WHERE s.dni LIKE ? OR s.tipo_solicitud = ?
+                GROUP BY s.id_solicitud
                 LIMIT 5
             `;
                 const [checkRows] = await pool.execute(checkQuery, [`%${dni}%`, applicationType]);
@@ -521,10 +628,21 @@ class ApplicationRepository {
                     return [];
                 }
             };
+            result.autores = safeJSONParse(result.autores);
 
-            result.documentos = safeJSONParse(result.documentos);
-            result.historial = safeJSONParse(result.historial);
-            console.log('🔗 Link tesis publicada desde BD:', result.link_tesis_publicada);
+            result.documentos = safeJSONParse(result.documentos).map((document) => ({
+                ...document,
+                status: mapDbStatusToApi(document.status),
+                rejection_history: (document.rejection_history || []).map((rejection) => ({
+                    ...rejection,
+                    status: mapDbStatusToApi(rejection.status)
+                }))
+            }));
+            result.historial = safeJSONParse(result.historial).map((entry) => ({
+                ...entry,
+                previous_status: mapDbStatusToApi(entry.previous_status),
+                new_status: mapDbStatusToApi(entry.new_status)
+            }));
 
             const formattedResult = {
                 application_id: result.id_solicitud,
@@ -535,11 +653,12 @@ class ApplicationRepository {
                     email: result.solicitante_email,
                     dni: result.solicitante_dni,
                     phone: result.numero_contacto,
-                    professional_school: result.escuela_profesional
+                    professional_school: result.escuela_profesional,
+                    authors: result.autores
                 },
                 project_name: result.nombre_proyecto,
                 observations: result.observaciones,
-                status: result.estado,
+                status: mapDbStatusToApi(result.estado),
                 created_at: result.fecha_solicitud,
                 publication_link: result.link_tesis_publicada,
                 documents: result.documentos.map(doc => ({
@@ -571,7 +690,6 @@ class ApplicationRepository {
                     const historialDate = new Date(h.change_date);
                     const relatedImages = [];
 
-                    // Buscar imágenes subidas cerca de esta fecha (±10 minutos)
                     result.documentos.forEach(doc => {
                         if (doc.images && doc.images.length > 0) {
                             doc.images.forEach(img => {
@@ -612,7 +730,6 @@ class ApplicationRepository {
                 formattedResult.documents.filter(doc => doc.rejection_history.length > 0).length
             );
 
-            // Log detallado de las imágenes y rechazos
             formattedResult.documents.forEach((doc, idx) => {
                 if (doc.images.length > 0) {
                     console.log(`📷 Documento ${idx + 1} (${doc.name}): ${doc.images.length} imágenes`);
@@ -642,10 +759,14 @@ class ApplicationRepository {
 
         try {
             await connection.beginTransaction();
+            const normalizedStatus = mapApiStatusToDb(status);
 
-            // Obtener información del documento y la solicitud
+            if (!["pendiente", "aprobado", "observado"].includes(normalizedStatus)) {
+                throw new Error(`Estado inválido para DB: ${normalizedStatus}`);
+            }
+            // ✅ PRIMERO: Obtener información del documento INCLUYENDO la ruta del archivo
             const [docInfo] = await connection.execute(
-                `SELECT id_solicitud, tipo_documento, estado as estado_anterior 
+                `SELECT id_solicitud, tipo_documento, estado as estado_anterior, ruta_archivo 
              FROM t_documentos 
              WHERE id_documento = ?`,
                 [documentId]
@@ -655,7 +776,12 @@ class ApplicationRepository {
                 throw new Error('Documento no encontrado');
             }
 
-            const { id_solicitud, tipo_documento, estado_anterior } = docInfo[0];
+            const { id_solicitud, tipo_documento, estado_anterior, ruta_archivo } = docInfo[0];
+
+            // ✅ DEFINIR filePathActual desde la query
+            const filePathActual = ruta_archivo || null;
+
+            console.log('📁 Ruta del archivo:', filePathActual);
 
             // Actualizar el documento
             const query = `
@@ -666,41 +792,49 @@ class ApplicationRepository {
                 updated_at = NOW()
             WHERE id_documento = ?
         `;
-            await connection.execute(query, [status, rejectionReason, documentId]);
+            await connection.execute(query, [normalizedStatus, rejectionReason, documentId]);
 
-            // 🆕 REGISTRAR EN HISTORIAL DE SOLICITUDES CON id_documento
+            // ✅ Registrar en historial con la ruta del archivo
             const idHistorial = uuidv4();
             const comentario = rejectionReason
-                ? `${tipo_documento} - ${status}: ${rejectionReason}`
-                : `${tipo_documento} - ${status}`;
+                ? `${tipo_documento} - ${normalizedStatus}: ${rejectionReason}`
+                : `${tipo_documento} - ${normalizedStatus}`;
+
+            console.log('💬 Comentario a guardar:', comentario);
+            console.log('📄 ID Documento:', documentId);
+            console.log('📊 Estado anterior:', estado_anterior);
+            console.log('📊 Estado nuevo:', normalizedStatus);
 
             await connection.execute(
                 `INSERT INTO t_historial_solicitudes 
-            (id_historial, id_solicitud, id_documento, estado_anterior, estado_nuevo, comentario, fecha_cambio)
-            VALUES (?, ?, ?, ?, ?, ?, NOW())`,
-                [idHistorial, id_solicitud, documentId, estado_anterior, status, comentario]
+            (id_historial, id_solicitud, id_documento, estado_anterior, estado_nuevo, comentario, fecha_cambio, file_path_historico)
+            VALUES (?, ?, ?, ?, ?, ?, NOW(), ?)`,
+                [idHistorial, id_solicitud, documentId, estado_anterior, normalizedStatus, comentario, filePathActual]
             );
 
             // Registrar en historial de rechazos si aplica
-            if (status === 'rechazado' && rejectionReason) {
+            if (normalizedStatus === 'observado' && rejectionReason) {
                 const historialQuery = `
                 INSERT INTO t_historial_rechazos (id_documento, estado, razon_rechazo)
                 VALUES (?, ?, ?)
             `;
-                await connection.execute(historialQuery, [documentId, status, rejectionReason]);
+                await connection.execute(historialQuery, [documentId, normalizedStatus, rejectionReason]);
             }
 
             // Guardar imágenes si hay
             let imageIds = [];
             if (images && images.length > 0) {
+                console.log('📸 Guardando', images.length, 'imágenes');
                 imageIds = await this.saveDocumentImages(documentId, images, connection);
             }
 
             await connection.commit();
+            console.log('✅ Documento actualizado correctamente');
             return { success: true };
+
         } catch (error) {
             await connection.rollback();
-            console.error('Error en updateDocumentStatus:', error);
+            console.error('❌ Error en updateDocumentStatus:', error);
             throw error;
         } finally {
             connection.release();
@@ -773,46 +907,115 @@ class ApplicationRepository {
     }
 
     async updateApplicationStatus(applicationId, newStatus, comment = null, adminId = null) {
-        // Actualizar estado de la solicitud
-        const updateQuery = `
-        UPDATE t_solicitudes 
-        SET 
-            estado = ?,
-            observaciones = ?,
-            updated_at = NOW()
-        WHERE id_solicitud = ?
-    `;
+        const connection = await pool.getConnection();
+        try {
+            await connection.beginTransaction();
 
-        await pool.execute(updateQuery, [newStatus, comment, applicationId]);
+            const normalizedStatus = mapApiStatusToDb(newStatus);
 
-        const idHistory = uuidv4();
-        const historyQuery = `
-    INSERT INTO t_historial_solicitudes 
-    (id_historial, id_solicitud, estado_anterior, estado_nuevo, comentario, id_admin, fecha_cambio)
-    SELECT 
-        ?,        -- id_historial
-        ?,        -- id_solicitud
-        estado,   -- estado_anterior
-        ?,        -- estado_nuevo
-        ?,        -- comentario
-        ?,        -- id_admin
-        NOW()
-    FROM t_solicitudes 
-    WHERE id_solicitud = ?
-    LIMIT 1
-`;
+            console.log('🔍 updateApplicationStatus - Inicio:', {
+                applicationId,
+                newStatus,
+                normalizedStatus,
+                comment,
+                adminId,
+                commentType: typeof comment,
+                commentLength: comment?.length
+            });
 
+            // Leer estado anterior
+            const [prev] = await connection.execute(
+                "SELECT estado FROM t_solicitudes WHERE id_solicitud = ? LIMIT 1",
+                [applicationId]
+            );
 
-        await pool.execute(historyQuery, [
-            idHistory,
-            applicationId,
-            newStatus,
-            comment,
-            adminId,
-            applicationId
-        ]);
+            if (prev.length === 0) {
+                throw new Error("Solicitud no encontrada");
+            }
 
-        return { success: true };
+            const previousStatus = prev[0].estado;
+            console.log('📊 Estado anterior:', previousStatus);
+
+            // Actualizar solicitud
+            const updateQuery = `
+            UPDATE t_solicitudes
+            SET estado = ?, observaciones = ?, updated_at = NOW()
+            WHERE id_solicitud = ?
+        `;
+
+            await connection.execute(updateQuery, [normalizedStatus, comment, applicationId]);
+            console.log('✅ Solicitud actualizada');
+
+            // Insertar en historial
+            const idHistory = uuidv4();
+
+            // ✅ IMPORTANTE: id_documento debe ser NULL para cambios de estado general
+            const historyParams = [
+                idHistory,           // id_historial
+                applicationId,       // id_solicitud  
+                null,                // id_documento (NULL porque es cambio general)
+                previousStatus,      // estado_anterior
+                normalizedStatus,    // estado_nuevo
+                comment || null      // comentario (convertir string vacío a null)
+            ];
+
+            console.log('📝 Parámetros del historial:', historyParams);
+
+            if (adminId) {
+                // Con id_admin
+                const historyQueryWithAdmin = `
+                INSERT INTO t_historial_solicitudes
+                (id_historial, id_solicitud, id_documento, estado_anterior, estado_nuevo, comentario, id_admin, fecha_cambio)
+                VALUES (?, ?, ?, ?, ?, ?, ?, NOW())
+            `;
+
+                await connection.execute(historyQueryWithAdmin, [...historyParams, adminId]);
+                console.log('✅ Historial insertado CON admin_id:', adminId);
+            } else {
+                // Sin id_admin
+                const historyQueryWithoutAdmin = `
+                INSERT INTO t_historial_solicitudes
+                (id_historial, id_solicitud, id_documento, estado_anterior, estado_nuevo, comentario, fecha_cambio)
+                VALUES (?, ?, ?, ?, ?, ?, NOW())
+            `;
+
+                await connection.execute(historyQueryWithoutAdmin, historyParams);
+                console.log('✅ Historial insertado SIN admin_id');
+            }
+
+            await connection.commit();
+            console.log('✅ Transacción completada');
+
+            return { success: true };
+
+        } catch (e) {
+            await connection.rollback();
+            console.error('❌ Error en updateApplicationStatus:', {
+                error: e.message,
+                code: e.code,
+                errno: e.errno,
+                sql: e.sql
+            });
+            throw e;
+        } finally {
+            connection.release();
+        }
+    }
+
+    async getHistoryWithDocumentPaths(applicationId) {
+        const [rows] = await pool.execute(`
+        SELECT 
+            h.*,
+            h.file_path_historico,
+            d.document_type,
+            d.file_name as current_file_name
+        FROM t_historial_solicitudes h
+        LEFT JOIN t_documentos d ON h.id_documento = d.document_id
+        WHERE h.id_solicitud = ?
+        ORDER BY h.fecha_cambio DESC
+    `, [applicationId]);
+
+        return rows;
     }
 
     async bulkUpdateDocuments(applicationId, documentUpdates) {

@@ -3,7 +3,7 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import applicationController from '../controllers/applicationController.js';
-
+import authMiddleware from '../middlewares/authMiddleware.js';
 const router = Router();
 
 const storage = multer.diskStorage({
@@ -50,6 +50,13 @@ const uploadFieldsTeacher = upload.fields([
     { name: 'report', maxCount: 1 }
 ]);
 
+const uploadResubmit = upload.fields([
+    { name: 'tesis_pdf', maxCount: 1 },
+    { name: 'hoja_autorizacion', maxCount: 1 },
+    { name: 'constancia_empastado', maxCount: 1 },
+    { name: 'constancia_originalidad', maxCount: 1 }
+]);
+
 const parseFormData = (req, res, next) => {
     try {
         const jsonFields = [
@@ -87,14 +94,6 @@ const parseFormData = (req, res, next) => {
     }
 };
 
-const uploads = multer({
-    storage,
-    limits: { fileSize: 10 * 1024 * 1024 },
-    fileFilter: (req, file, cb) => {
-        if (file.mimetype === 'application/pdf') cb(null, true);
-        else cb(new Error('Solo se permiten archivos PDF'), false);
-    }
-});
 
 // Nuevo upload para imágenes
 const uploadImages = multer({
@@ -110,41 +109,41 @@ const uploadImages = multer({
     }
 });
 
-router.post(
-    '/students',
-    uploadFieldsStudent,
-    parseFormData,
+router.post('/students', uploadFieldsStudent, parseFormData, 
     (req, res) => applicationController.createApplication(req, res)
 );
 
-router.post(
-    '/teachers',
-    uploadFieldsTeacher,
-    parseFormData,
+router.post('/teachers', uploadFieldsTeacher, parseFormData,
     (req, res) => applicationController.createTeacherApplication(req, res)
 );
 
-router.get(
-    '/list', applicationController.getApplications
-);
+router.get('/list', authMiddleware, applicationController.getApplications);
 
-router.get(
-    '/details/:id',
+router.get('/details/:id', authMiddleware, 
     (req, res) => applicationController.getTeacherApplicationDetails(req, res)
 );
 
 router.get('/search', applicationController.getApplicationByDni);
 
-router.patch('/documents/:documentId/review', uploadImages.array('images', 10), applicationController.updateDocumentReview);
+router.patch('/documents/:documentId/review', authMiddleware, uploadImages.array('images', 10), 
+    applicationController.updateDocumentReview
+);
 
 // Actualizar estado de la solicitud completa
-router.patch('/:id/review', applicationController.updateApplicationReview);
+router.patch('/:id/review', authMiddleware, applicationController.updateApplicationReview);
 // Actualizar múltiples documentos a la vez
-router.patch('/:applicationId/documents/bulk-update', applicationController.bulkUpdateDocuments);
+router.patch('/:applicationId/documents/bulk-update', authMiddleware, 
+    applicationController.bulkUpdateDocuments
+);
 
-// Consulta por DNI (ya existe)
-router.get('/search', applicationController.getApplicationByDni);
+router.post('/:id/publication-link', authMiddleware, applicationController.savePublicationLink);
 
-router.post('/:id/publication-link', applicationController.savePublicationLink);
+router.get('/:id/history-with-paths', authMiddleware, applicationController.getHistoryWithPaths);
 
+router.post(
+    '/:id/resubmit', 
+    uploadResubmit, 
+    parseFormData,
+    applicationController.resubmitApplication
+);
 export default router;
