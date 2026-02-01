@@ -38,9 +38,9 @@ app.use("/api/personas", personasRoutes); // ✅ para /api/personas/dni/:dni
 app.get("/health", (req, res) => {
   res.json({ status: "OK", message: "Server is running" });
 });
-app.get(/^\/(?!api).*/, (req, res) => {
+/*app.get(/^\/(?!api).*//*, (req, res) => {
   res.sendFile(path.join(__dirname, "dist", "index.html"));
-});
+});*/
 
 
 
