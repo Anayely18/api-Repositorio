@@ -28,3 +28,4 @@ temp/
 logs/
 
 .env
+src/repositories/*.bak_*
