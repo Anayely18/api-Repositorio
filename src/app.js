@@ -34,18 +34,20 @@ app.use("/api/auth", authRoutes);
 app.use("/api/profile", profileRoutes);
 
 app.use("/api/lookup", lookupRoutes);
-app.use("/api/personas", personasRoutes); // ✅ para /api/personas/dni/:dni
+app.use("/api/personas", personasRoutes); 
+
+// ✅ ALIAS (cuando Nginx reescribe /api/* -> /*)
+app.use("/applications", applicationRoutes);
+app.use("/auth", authRoutes);
+app.use("/profile", profileRoutes);
+app.use("/lookup", lookupRoutes);
+app.use("/personas", personasRoutes);
 
 app.get("/health", (req, res) => {
   res.json({ status: "OK", message: "Server is running" });
 });
-/*app.get(/^\/(?!api).*//*, (req, res) => {
-  res.sendFile(path.join(__dirname, "dist", "index.html"));
-});*/
 
 
-
-// ✅ 3) 404 AL FINAL SIEMPRE
 app.use((req, res) => {
   res.status(404).json({ success: false, message: "Route not found" });
 });

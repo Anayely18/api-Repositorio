@@ -366,36 +366,39 @@ class ApplicationRepository {
                 )
             )
             FROM (
-                SELECT
-                    h.id_historial,
-                    h.estado_anterior,
-                    h.estado_nuevo,
-                    h.comentario,
-                    h.fecha_cambio,
-                    h.id_documento,
-                    h.file_path_historico,
-                    h.file_name_historico,
-                    adm.nombre_usuario AS admin_name,
-                    d.tipo_documento AS document_type,
-                    IFNULL(
-                        (SELECT JSON_ARRAYAGG(
-                            JSON_OBJECT(
-                                'image_id', img.id_imagen,
-                                'image_path', img.ruta_imagen,
-                                'file_name', img.nombre_archivo,
-                                'created_at', img.created_at
-                            )
-                        )
-                        FROM t_documentos_imagenes img
-                        WHERE img.history_id = h.id_historial),
-                        JSON_ARRAY()
-                    ) AS images
-                FROM t_historial_solicitudes h
-                LEFT JOIN t_administradores adm ON h.id_admin = adm.id_admin
-                LEFT JOIN t_documentos d ON h.id_documento = d.id_documento
-                WHERE h.id_solicitud = s.id_solicitud
-                ORDER BY h.fecha_cambio DESC
-            ) hx),
+    SELECT
+        h.id_solicitud,
+        h.id_historial,
+        h.estado_anterior,
+        h.estado_nuevo,
+        h.comentario,
+        h.fecha_cambio,
+        h.id_documento,
+        h.file_path_historico,
+        h.file_name_historico,
+        adm.nombre_usuario AS admin_name,
+        d.tipo_documento AS document_type,
+        IFNULL(
+            (SELECT JSON_ARRAYAGG(
+                JSON_OBJECT(
+                    'image_id', img.id_imagen,
+                    'image_path', img.ruta_imagen,
+                    'file_name', img.nombre_archivo,
+                    'created_at', img.created_at
+                )
+            )
+            FROM t_documentos_imagenes img
+            WHERE img.history_id = h.id_historial),
+            JSON_ARRAY()
+        ) AS images
+    FROM t_historial_solicitudes h
+    LEFT JOIN t_administradores adm ON h.id_admin = adm.id_admin
+    LEFT JOIN t_documentos d ON h.id_documento = d.id_documento
+    ORDER BY h.fecha_cambio DESC
+) hx
+WHERE hx.id_solicitud = ?
+),
+
             JSON_ARRAY()
         ) AS historial
 
@@ -403,7 +406,7 @@ class ApplicationRepository {
     WHERE s.id_solicitud = ?
 `;
 
-        const [rows] = await pool.execute(query, [id]);
+        const [rows] = await pool.execute(query, [id, id]);
 
         if (rows.length === 0) {
             return null;
@@ -480,7 +483,29 @@ class ApplicationRepository {
 
     async getApplicationByDni(dni, applicationType) {
         console.log('🔍 Repository - Buscando DNI:', dni, 'Tipo:', applicationType);
+	const [base] = await pool.execute(
+  	`
+  		SELECT s.id_solicitud
+  		FROM t_solicitudes s
+  		WHERE s.tipo_solicitud = ?
+  		AND (
+      		s.dni = ?
+      		OR EXISTS (
+          		SELECT 1
+          		FROM t_autores a
+          		WHERE a.id_solicitud = s.id_solicitud
+          		AND a.dni = ?
+      			)
+  		)
+  		ORDER BY s.fecha_solicitud DESC
+  		LIMIT 1
+  			`,
+  		[applicationType, dni, dni]
+		);
 
+		if (base.length === 0) return null;
+
+	const applicationId = base[0].id_solicitud;
         const query = `
         SELECT 
             s.id_solicitud,
@@ -582,7 +607,7 @@ class ApplicationRepository {
             IFNULL(
                 (SELECT JSON_ARRAYAGG(
                     JSON_OBJECT(
-                        'history_id', hx.id_historial,
+	                        'history_id', hx.id_historial,
                         'previous_status', hx.estado_anterior,
                         'new_status', hx.estado_nuevo,
                         'comment', hx.comentario,
@@ -623,7 +648,7 @@ class ApplicationRepository {
                     FROM t_historial_solicitudes h
                     LEFT JOIN t_administradores adm ON h.id_admin = adm.id_admin
                     LEFT JOIN t_documentos d ON h.id_documento = d.id_documento
-                    WHERE h.id_solicitud = s.id_solicitud
+                    WHERE h.id_solicitud = ?
                     ORDER BY h.fecha_cambio DESC
                 ) hx),
                 JSON_ARRAY()
@@ -644,10 +669,10 @@ class ApplicationRepository {
         LIMIT 1
     `;
 
-        console.log('📝 Ejecutando query con params:', [applicationType, dni, dni]);
+        console.log('📝 Ejecutando query con params:', [applicationId, applicationType, dni, dni]);
 
         try {
-            const [rows] = await pool.execute(query, [applicationType, dni, dni]);
+            const [rows] = await pool.execute(query, [applicationId, applicationType, dni, dni]);
 
             console.log('📊 Número de resultados:', rows.length);
 
