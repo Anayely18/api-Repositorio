@@ -3,6 +3,18 @@ import Application from "../models/Application.js";
 import { v4 as uuidv4 } from "uuid";
 import { mapApiStatusToDb, mapDbStatusToApi } from "../utils/statusMapper.js";
 
+const toApiPath = (p) => {
+    if (!p) return null;
+    if (/^https?:\/\//i.test(p)) return p;
+
+    const clean = p.startsWith("/") ? p : `/${p}`;
+
+    // si ya viene con /api, no tocar
+    if (clean.startsWith("/api/")) return clean;
+
+    // fuerza a /api + ruta (ej: /uploads/... -> /api/uploads/...)
+    return `/api${clean}`;
+};
 
 class ApplicationRepository {
 
@@ -397,6 +409,7 @@ class ApplicationRepository {
     ORDER BY h.fecha_cambio DESC
 ) hx
 WHERE hx.id_solicitud = ?
+  AND NOT (hx.id_documento IS NULL AND hx.estado_nuevo = 'observado')
 ),
 
             JSON_ARRAY()
@@ -435,20 +448,30 @@ WHERE hx.id_solicitud = ?
 
         result.documentos = safeJSONParse(result.documentos).map((document) => ({
             ...document,
-            images: safeJSONParse(document.images),
+            file_path: toApiPath(document.file_path),
+            images: safeJSONParse(document.images).map((img) => ({
+                ...img,
+                image_path: toApiPath(img.image_path),
+            })),
             status: mapDbStatusToApi(document.status),
             rejection_history: safeJSONParse(document.rejection_history).map((rejection) => ({
                 ...rejection,
-                status: mapDbStatusToApi(rejection.status)
-            }))
+                status: mapDbStatusToApi(rejection.status),
+            })),
         }));
+
 
         result.historial = safeJSONParse(result.historial).map((entry) => ({
             ...entry,
             previous_status: mapDbStatusToApi(entry.previous_status),
             new_status: mapDbStatusToApi(entry.new_status),
-            images: safeJSONParse(entry.images) // ✅ Parsear las imágenes del historial
+            file_path_historic: toApiPath(entry.file_path_historic),
+            images: safeJSONParse(entry.images).map((img) => ({
+                ...img,
+                image_path: toApiPath(img.image_path),
+            })),
         }));
+
 
         return {
             application_id: result.id_solicitud,
@@ -483,8 +506,8 @@ WHERE hx.id_solicitud = ?
 
     async getApplicationByDni(dni, applicationType) {
         console.log('🔍 Repository - Buscando DNI:', dni, 'Tipo:', applicationType);
-	const [base] = await pool.execute(
-  	`
+        const [base] = await pool.execute(
+            `
   		SELECT s.id_solicitud
   		FROM t_solicitudes s
   		WHERE s.tipo_solicitud = ?
@@ -500,12 +523,12 @@ WHERE hx.id_solicitud = ?
   		ORDER BY s.fecha_solicitud DESC
   		LIMIT 1
   			`,
-  		[applicationType, dni, dni]
-		);
+            [applicationType, dni, dni]
+        );
 
-		if (base.length === 0) return null;
+        if (base.length === 0) return null;
 
-	const applicationId = base[0].id_solicitud;
+        const applicationId = base[0].id_solicitud;
         const query = `
         SELECT 
             s.id_solicitud,
@@ -649,7 +672,9 @@ WHERE hx.id_solicitud = ?
                     LEFT JOIN t_administradores adm ON h.id_admin = adm.id_admin
                     LEFT JOIN t_documentos d ON h.id_documento = d.id_documento
                     WHERE h.id_solicitud = ?
+                    AND NOT (h.id_documento IS NULL AND h.estado_nuevo = 'observado')
                     ORDER BY h.fecha_cambio DESC
+
                 ) hx),
                 JSON_ARRAY()
             ) AS historial
