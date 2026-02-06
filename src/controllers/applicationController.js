@@ -378,20 +378,23 @@ class ApplicationController {
             const { id } = req.params;
             const documents = await applicationService.getDocumentsWithApplicationDetails(id);
 
+            if (!documents) {
+                return res.status(404).json({ success: false, message: "No encontrado" });
+            }
+
             return res.status(200).json({
                 success: true,
-                data: documents
+                data: {
+                    ...documents,
+                    timeline: documents.history ?? [], // ✅ alias para frontend
+                },
             });
-
         } catch (error) {
-            console.error('Error al obtener documentos con detalles de solicitud:', error);
-
-            return res.status(500).json({
-                success: false,
-                message: 'Error al obtener documentos'
-            });
+            console.error("Error al obtener documentos con detalles de solicitud:", error);
+            return res.status(500).json({ success: false, message: "Error al obtener documentos" });
         }
     }
+
 
     async getApplications(req, res) {
         try {
