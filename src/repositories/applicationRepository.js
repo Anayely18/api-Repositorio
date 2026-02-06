@@ -409,7 +409,6 @@ class ApplicationRepository {
     ORDER BY h.fecha_cambio DESC
 ) hx
 WHERE hx.id_solicitud = ?
-  AND NOT (hx.id_documento IS NULL AND hx.estado_nuevo = 'observado')
 ),
 
             JSON_ARRAY()
@@ -672,7 +671,6 @@ WHERE hx.id_solicitud = ?
                     LEFT JOIN t_administradores adm ON h.id_admin = adm.id_admin
                     LEFT JOIN t_documentos d ON h.id_documento = d.id_documento
                     WHERE h.id_solicitud = ?
-                    AND NOT (h.id_documento IS NULL AND h.estado_nuevo = 'observado')
                     ORDER BY h.fecha_cambio DESC
 
                 ) hx),
@@ -1134,7 +1132,7 @@ WHERE hx.id_solicitud = ?
             d.document_type,
             d.file_name as current_file_name
         FROM t_historial_solicitudes h
-        LEFT JOIN t_documentos d ON h.id_documento = d.document_id
+        LEFT JOIN t_documentos d ON h.id_documento = d.id_document
         WHERE h.id_solicitud = ?
         ORDER BY h.fecha_cambio DESC
     `, [applicationId]);
